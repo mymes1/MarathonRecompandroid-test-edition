@@ -13,6 +13,7 @@
 #include <cpu/guest_thread.h>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <decompressor.h>
 #include <kernel/function.h>
 #include <kernel/heap.h>
@@ -44,6 +45,7 @@
 #if defined(__ANDROID__)
 #include <os/android/storage_android.h>
 #include <os/android/vulkan_driver_android.h>
+#include <sys/system_properties.h>
 #endif
 
 #if defined(ASYNC_PSO_DEBUG) || defined(PSO_CACHING)
@@ -1558,6 +1560,21 @@ static constexpr size_t SAMPLER_DESCRIPTOR_SIZE = 1024;
 static uint32_t g_textureDescriptorSize = TEXTURE_DESCRIPTOR_SIZE;
 static uint32_t g_samplerDescriptorSize = SAMPLER_DESCRIPTOR_SIZE;
 
+#if defined(__ANDROID__)
+// The Galaxy Tab A9 Wi-Fi (SM-X110) uses Samsung's Mali-G57 driver. It advertises
+// descriptor-indexing limits large enough for the desktop bindless layout, but crashes in
+// libGLES_mali while compiling shaders with that layout. Keep its layout deliberately
+// small; the renderer's descriptor allocator already supports this fallback.
+static constexpr size_t SM_X110_TEXTURE_DESCRIPTOR_SIZE = 1024;
+
+static bool IsGalaxyTabA9Wifi()
+{
+    char model[PROP_VALUE_MAX]{};
+    __system_property_get("ro.product.model", model);
+    return strcmp(model, "SM-X110") == 0;
+}
+#endif
+
 static std::unique_ptr<GuestTexture> g_imFontTexture;
 static std::unique_ptr<RenderPipelineLayout> g_imPipelineLayout;
 static std::unique_ptr<RenderPipeline> g_imPipeline;
@@ -2153,6 +2170,15 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
         g_samplerDescriptorSize = uint32_t(std::min<size_t>(SAMPLER_DESCRIPTOR_SIZE, g_capabilities.maxSamplerDescriptors));
 
 #if defined(__ANDROID__)
+    // Android 15's stock Mali driver on the Tab A9 Wi-Fi faults in libGLES_mali while
+    // compiling the renderer's large bindless descriptor layouts. Apply this after
+    // reading the driver limits but before loading cached shaders or allocating sets.
+    if (IsGalaxyTabA9Wifi())
+    {
+        g_textureDescriptorSize = uint32_t(std::min<size_t>(g_textureDescriptorSize, SM_X110_TEXTURE_DESCRIPTOR_SIZE));
+        LOGF_WARNING("SM-X110 compatibility path: limiting bindless texture descriptors to {}.", g_textureDescriptorSize);
+    }
+
     // Stock Mali Vulkan drivers are considerably less tolerant of optional paths
     // than Adreno/Turnip. Keep the device on the conservative render path: these
     // features are optional and their absence is already handled by the renderer.
