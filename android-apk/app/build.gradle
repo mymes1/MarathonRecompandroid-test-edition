@@ -1,0 +1,74 @@
+def buildAsLibrary = project.hasProperty('BUILD_AS_LIBRARY');
+def buildAsApplication = !buildAsLibrary
+if (buildAsApplication) {
+    apply plugin: 'com.android.application'
+}
+else {
+    apply plugin: 'com.android.library'
+}
+
+android {
+    if (buildAsApplication) {
+        namespace "org.libsdl.app"
+    }
+    compileSdkVersion 34
+    ndkVersion "29.0.14206865"
+    defaultConfig {
+        // Java sources and JNI bindings stay in the org.libsdl.app namespace (SDL
+        // registers natives against those class names); only the install identity
+        // changes. Renaming this orphans data under Android/data/<old id>.
+        applicationId "com.sega.marathon"
+        minSdkVersion 29
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0.0"
+    }
+    // CI provides the release keystore through environment variables (see
+    // .github/workflows/android.yml); local release builds stay unsigned.
+    if (System.getenv("ANDROID_KEYSTORE_FILE") != null) {
+        signingConfigs {
+            ci {
+                storeFile file(System.getenv("ANDROID_KEYSTORE_FILE"))
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (System.getenv("ANDROID_KEYSTORE_FILE") != null) {
+                signingConfig signingConfigs.ci
+            }
+        }
+    }
+    // MarathonRecomp's libmain.so is built separately by the project's own CMake pipeline
+    // (see the android-release preset and build scripts) and copied into
+    // src/main/jniLibs/arm64-v8a/ manually; there is intentionally no Gradle ndk-build step.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+    lint {
+        abortOnError false
+    }
+
+    if (buildAsLibrary) {
+        libraryVariants.all { variant ->
+            variant.outputs.each { output ->
+                def outputFile = output.outputFile
+                if (outputFile != null && outputFile.name.endsWith(".aar")) {
+                    def fileName = "org.libsdl.app.aar";
+                    output.outputFile = new File(outputFile.parent, fileName);
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+}

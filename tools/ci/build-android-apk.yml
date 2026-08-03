@@ -1,0 +1,278 @@
+name: build-android-apk
+
+on:
+  push:
+    branches: ["arena/019fbd91-marathonrecomp"]
+  workflow_dispatch:
+    inputs:
+      build_files_url:
+        description: 'Public URL of the game-files zip (default.xex + shader.arc + shader_lt.arc)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_FILES_URL: ${{ inputs.build_files_url || vars.BUILD_FILES_URL || '' }}
+  NDK_VERSION: "29.0.14206865"
+  # Force vcpkg to use system cmake/ninja instead of downloading its own
+  # binaries, which can fail with "Could not find CMAKE_ROOT" on GitHub Actions.
+  VCPKG_FORCE_SYSTEM_BINARIES: 1
+  VCPKG_ROOT: ${{ github.workspace }}/thirdparty/vcpkg
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      # ── Git submodules (automatic) ─────────────────────────────────────────
+      # MoltenVK / nativefiledialog are desktop-only and not needed for the
+      # Android build. tools/* are recursive for their own thirdparty
+      # (fmt, zstd, xxHash, simde, dxc-bin, ...). vcpkg provides the Android
+      # dependencies (freetype for msdf-atlas-gen, curl) via the arm64-android
+      # triplet.
+      - name: Checkout submodules
+        run: |
+          for attempt in 1 2 3; do
+            if git submodule update --init --depth 1 --recursive \
+                tools/XenonRecomp tools/XenosRecomp \
+                thirdparty/SDL thirdparty/SDL_mixer thirdparty/msdf-atlas-gen \
+                thirdparty/stb thirdparty/concurrentqueue thirdparty/magic_enum \
+                thirdparty/unordered_dense thirdparty/json thirdparty/ddspp \
+                thirdparty/imgui thirdparty/implot thirdparty/vcpkg \
+                MarathonRecompResources; then
+              echo "Submodules initialized (attempt $attempt)"
+              break
+            fi
+            echo "Submodule fetch failed (attempt $attempt/3), retrying..."
+            sleep 10
+          done
+          git submodule status | sed 's/^/  /'
+
+      # ── dxc-bin (HLSL -> DXIL/SPIR-V compiler binaries) ────────────────────
+      # Not committed to this repo and only reachable as a nested submodule of
+      # tools/XenosRecomp; fetch it explicitly so the shader-header step works
+      # even if the nested submodule checkout was incomplete.
+      - name: Fetch dxc-bin binaries
+        run: |
+          DXC_DEST="tools/XenosRecomp/thirdparty/dxc-bin"
+          if [ -x "$DXC_DEST/bin/x64/dxc-linux" ]; then
+            echo "dxc-bin already present"
+          else
+            rm -rf "$DXC_DEST"
+            git clone --depth=1 https://github.com/renderbag/dxc-bin.git "$DXC_DEST"
+            chmod +x "$DXC_DEST/bin/x64/dxc-linux"
+          fi
+          ls -lh "$DXC_DEST/bin/x64/" "$DXC_DEST/lib/x64/"
+
+      - name: Install JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ── System dependencies ─────────────────────────────────────────────────
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            ninja-build \
+            cmake \
+            clang \
+            llvm \
+            unzip \
+            curl \
+            patch
+          echo "ninja: $(which ninja)"
+          ninja --version
+          cmake --version
+          clang --version | head -1
+
+      # ── Android SDK / NDK ───────────────────────────────────────────────────
+      - name: Set up Android SDK / NDK
+        run: |
+          sdk_root="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+
+          sdkmanager_bin="$(ls "$sdk_root"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1 || true)"
+          if [ -z "$sdkmanager_bin" ]; then
+            echo "::error::Android SDK cmdline-tools not found under $sdk_root" >&2
+            exit 1
+          fi
+
+          # Accept licenses by writing the hash files directly (piping 'yes'
+          # into sdkmanager can die with "Broken pipe").
+          mkdir -p "$sdk_root/licenses"
+          printf '\n893a5cd87b77ab4d135d2055424f66020d172922' > "$sdk_root/licenses/android-sdk-license"
+          printf '\n84831b9409646a918e30573bab4c9c91346d8abd' > "$sdk_root/licenses/android-sdk-preview-license"
+          printf '\n2714b153713551b174f451f15436c3471b6d13a6' > "$sdk_root/licenses/google-tv-license"
+          printf '\n33b6a2b64bc18aa0247651106a24c583f9844f32' > "$sdk_root/licenses/google-gdk-license"
+          printf '\ne9ac305955a40b84d8b30e752e22ca5b4f7ec523' > "$sdk_root/licenses/android-googletv-license"
+          printf '\nmips-android-sysimage-license' > "$sdk_root/licenses/mips-android-sysimage-license"
+
+          "$sdkmanager_bin" --install \
+            "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}" >/dev/null
+          echo "ANDROID_NDK_HOME=$sdk_root/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "SDK + NDK installed"
+
+      # ── Game files ──────────────────────────────────────────────────────────
+      - name: Fetch game files
+        if: env.BUILD_FILES_URL != ''
+        run: |
+          bash tools/ci/fetch_build_files.sh "$BUILD_FILES_URL" "$GITHUB_WORKSPACE/ci-build-files"
+          mkdir -p MarathonRecompLib/private
+          cp ci-build-files/game/default.xex MarathonRecompLib/private/default.xex
+          cp ci-build-files/game/shader.arc MarathonRecompLib/private/shader.arc
+          cp ci-build-files/game/shader_lt.arc MarathonRecompLib/private/shader_lt.arc
+          if [ -d "ci-build-files/game/shader" ]; then
+            cp -r ci-build-files/game/shader MarathonRecompLib/private/
+          fi
+          if ls ci-build-files/drivers/*.so >/dev/null 2>&1; then
+            cp ci-build-files/drivers/*.so android-apk/app/src/main/assets/bundled_driver/
+          fi
+
+      - name: Fail early if game files are missing
+        run: |
+          test -f MarathonRecompLib/private/default.xex || { \
+            echo "::error::Game files are missing. Set the BUILD_FILES_URL repository variable or pass build_files_url to this workflow."; \
+            exit 1; }
+
+      # ── Gradle cache ────────────────────────────────────────────────────────
+      - name: Cache Gradle files
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android-apk/**/*.gradle*', 'android-apk/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-
+
+      # Debug APKs must be signed with a STABLE key across runs: a fresh runner
+      # generates a new ~/.android/debug.keystore each time, so an APK from run
+      # #2 cannot be installed over the one from run #1 (signature mismatch, the
+      # installer silently dismisses the dialog). Cache the keystore.
+      - name: Cache Android debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+          restore-keys: |
+            android-debug-keystore-
+
+      # ── vcpkg (provides freetype + curl for arm64-android) ─────────────────
+      - name: Bootstrap vcpkg
+        run: |
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          "$VCPKG_ROOT/vcpkg" version
+
+      # ── Host recompiler tools ───────────────────────────────────────────────
+      # Built with clang (like the repo's own CI) and with the tools' LTO
+      # disabled (MARATHON_RECOMP_OPTIMIZE_TOOLS=OFF) - LTO archives from a
+      # mismatched compiler/linker cause "file format not recognized". No bare
+      # tool names are passed: CMake resolves the archiver itself, so there is
+      # no "llvm-ar: not found" (that happens only when passing -DCMAKE_AR=llvm-ar).
+      - name: Build host tools
+        run: |
+          cmake -S . -B out/build/linux-host-tools -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DMARATHON_RECOMP_OPTIMIZE_TOOLS=OFF \
+            -DMARATHON_RECOMP_HOST_TOOLS_ONLY=ON
+          cmake --build out/build/linux-host-tools --target XenonRecomp XenosRecomp file_to_c u8extract -j2
+          ls -la out/build/linux-host-tools/tools/XenonRecomp/XenonRecomp/XenonRecomp
+
+      # ── ffmpeg for Android (automatic, XMA decoder) ────────────────────────
+      - name: Build ffmpeg for Android
+        run: |
+          bash tools/ci/build_ffmpeg_android.sh \
+            "$ANDROID_NDK_HOME" \
+            "$GITHUB_WORKSPACE/ci-ffmpeg/android-arm64"
+          echo "FFMPEG_CORE_LOCAL_LIB_DIR=$GITHUB_WORKSPACE/ci-ffmpeg/android-arm64/lib" >> "$GITHUB_ENV"
+
+      # ── Native library (.so) ────────────────────────────────────────────────
+      # vcpkg toolchain + NDK chainload: installs freetype (msdf-atlas-gen) and
+      # curl for arm64-android, exactly like the desktop build gets them.
+      - name: Configure Android build
+        run: |
+          # Make sure the host tool binaries are executable (a directory path or
+          # a missing exec bit shows up as "Permission denied" when ninja runs
+          # them to generate the recompiled sources).
+          chmod +x \
+            "$GITHUB_WORKSPACE/out/build/linux-host-tools/tools/XenonRecomp/XenonRecomp/XenonRecomp" \
+            "$GITHUB_WORKSPACE/out/build/linux-host-tools/tools/XenosRecomp/XenosRecomp/XenosRecomp" \
+            "$GITHUB_WORKSPACE/out/build/linux-host-tools/tools/file_to_c/file_to_c" \
+            "$GITHUB_WORKSPACE/out/build/linux-host-tools/tools/u8extract/u8extract"
+
+          cmake -S . -B out/build/android-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-29 \
+            -DANDROID_STL=c++_static \
+            -DMARATHON_RECOMP_ANDROID=ON \
+            -DMARATHON_RECOMP_OPTIMIZE_TOOLS=OFF \
+            -DMARATHON_RECOMP_HOST_XENON_RECOMP="$GITHUB_WORKSPACE/out/build/linux-host-tools/tools/XenonRecomp/XenonRecomp/XenonRecomp" \
+            -DMARATHON_RECOMP_HOST_XENOS_RECOMP="$GITHUB_WORKSPACE/out/build/linux-host-tools/tools/XenosRecomp/XenosRecomp/XenosRecomp" \
+            -DMARATHON_RECOMP_HOST_FILE_TO_C="$GITHUB_WORKSPACE/out/build/linux-host-tools/tools/file_to_c/file_to_c" \
+            -DMARATHON_RECOMP_HOST_U8EXTRACT="$GITHUB_WORKSPACE/out/build/linux-host-tools/tools/u8extract/u8extract" \
+            -DFFMPEG_CORE_LOCAL_LIB_DIR="$FFMPEG_CORE_LOCAL_LIB_DIR"
+
+      - name: Build libmain.so
+        run: |
+          # The host XenosRecomp links libdxcompiler.so and runs during this
+          # build (shader recompilation); make sure the dxc libs are findable.
+          export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/tools/XenosRecomp/thirdparty/dxc-bin/lib/x64:${LD_LIBRARY_PATH:-}"
+          cmake --build out/build/android-arm64 --target MarathonRecomp -j4
+          test -f out/build/android-arm64/MarathonRecomp/libmain.so
+
+      # ── Package .so into the APK ────────────────────────────────────────────
+      - name: Copy native libs into jniLibs
+        run: |
+          JNI_DIR="android-apk/app/src/main/jniLibs/arm64-v8a"
+          mkdir -p "$JNI_DIR"
+          rm -f "$JNI_DIR"/*.so
+          # libmain.so plus the libadrenotools hooks (main_hook,
+          # file_redirect_hook, gsl_alloc_hook, hook_impl) that the custom
+          # Vulkan driver loader dlopens from nativeLibraryDir.
+          cp out/build/android-arm64/MarathonRecomp/*.so "$JNI_DIR/"
+          ls -la "$JNI_DIR"
+          sha256sum "$JNI_DIR"/*.so
+
+      # ── APK ─────────────────────────────────────────────────────────────────
+      - name: Assemble debug APK
+        working-directory: android-apk
+        run: |
+          ./gradlew --no-daemon assembleDebug
+
+      # ── Upload artifacts ────────────────────────────────────────────────────
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarathonRecomp-Android-debug
+          path: android-apk/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload libmain.so
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarathonRecomp-Android-libmain
+          path: android-apk/app/src/main/jniLibs/arm64-v8a/libmain.so
+          if-no-files-found: warn

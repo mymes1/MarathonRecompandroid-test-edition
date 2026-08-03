@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Marathon Recompiled</string>
+    <string name="documents_game_title">Файлы игры Marathon Recompiled</string>
+    <string name="documents_game_summary">Игра, моды, конфигурация и сохранения</string>
+    <string name="documents_transfer_title">Marathon Recompiled: обмен файлами</string>
+    <string name="documents_transfer_summary">Моды, драйверы, журналы и диагностика</string>
+    <string name="mod_manager_launcher_name">Marathon: моды</string>
+    <string name="mod_manager_title">Marathon: моды</string>
+    <string name="mod_manager_hint">Скопируйте папки модов в каталог mods, обновите список, включите моды и задайте приоритет. Сохранение записывает стандартную базу CPKREDIR; перезапустите игру, чтобы изменения вступили в силу.</string>
+    <string name="mod_manager_open_files">Открыть файлы</string>
+    <string name="mod_manager_refresh">Обновить</string>
+    <string name="mod_manager_save">Сохранить список модов</string>
+    <string name="mod_manager_empty">Совместимые mod.ini не найдены. Откройте папку модов, создайте mods/ и скопируйте туда моды HMM или UMM.</string>
+    <string name="mod_manager_found">Найдено совместимых модов: %1$d.</string>
+    <string name="mod_manager_saved">Сохранено включённых модов: %1$d (в порядке приоритета).</string>
+    <string name="mod_manager_restart">Изменения модов применятся после перезапуска игры.</string>
+    <string name="mod_manager_error_directory">Не удалось создать каталог конфигурации: %1$s</string>
+    <string name="mod_manager_error_save">Не удалось сохранить базу модов: %1$s</string>
+    <string name="mod_manager_error_files">Не удалось открыть «Файлы» Android.</string>
+
+    <string name="launcher_title">Marathon Recompiled</string>
+    <string name="launcher_subtitle">Sonic the Hedgehog (2006) на Android. Проверьте установку и настройте игру перед запуском.</string>
+    <string name="launcher_game_files">Файлы игры</string>
+    <string name="launcher_open_files">Открыть папку игры</string>
+    <string name="launcher_recheck">Проверить снова</string>
+    <string name="launcher_graphics">Графический драйвер</string>
+    <string name="launcher_driver">Драйвер Vulkan</string>
+    <string name="launcher_render_mode">Режим рендеринга Turnip</string>
+    <string name="launcher_import_driver">Импорт .so / .zip</string>
+    <string name="launcher_driver_folder">Папка драйверов</string>
+    <string name="launcher_controls">Управление</string>
+    <string name="launcher_edit_layout">Расставить сенсорные кнопки</string>
+    <string name="launcher_mods">Моды</string>
+    <string name="launcher_mods_summary">Включайте совместимые моды HMM/UMM и задавайте приоритет.</string>
+    <string name="launcher_manage_mods">Управление модами</string>
+    <string name="launcher_debug">Отладочные опции</string>
+    <string name="launcher_skip_intro">Пропускать интро-логотипы</string>
+    <string name="launcher_validation">Синхронизационная проверка Vulkan (медленно)</string>
+    <string name="launcher_gfx_capture">Запись трассы GFXReconstruct (очень большая и медленная)</string>
+    <string name="launcher_open_logs">Журналы и записи</string>
+    <string name="launcher_play">Запустить игру</string>
+    <string name="launcher_driver_pending">Пакетов драйвера для установки: %1$d.</string>
+    <string name="launcher_driver_installed">Импортированный драйвер: %1$s</string>
+    <string name="launcher_driver_builtin">Доступны автоматический, системный и импортированный Vulkan-драйверы. Импортированных драйверов нет.</string>
+    <string name="launcher_driver_recovery">Предыдущий запуск Vulkan не завершился. Автовосстановление использует безопасный драйвер; если проблема повторится, выберите System.</string>
+    <string name="launcher_log_found">Последний журнал (%1$s).</string>
+    <string name="launcher_log_missing">Журнала пока нет. Он создаётся при запуске игры.</string>
+    <string name="game_ready_all_dlc">Готово к запуску. Базовая игра и все DLC обнаружены.</string>
+    <string name="game_ready_missing_dlc">Готово к запуску. Базовая игра найдена; пакетов DLC: %1$d из %2$d.</string>
+    <string name="error_title">Не удаётся продолжить</string>
+    <string name="error_game_missing">Файлы игры не установлены. Скопируйте папки game и (по желанию) dlc из дампа Xbox 360 в:\n%1$s\n\nНе копируйте APK, файлы ПК-версии или ярлыки.</string>
+    <string name="error_game_partial">Установка неполная или повреждена. Отсутствуют файлы:%1$s\n\nОжидаемый корень:\n%2$s</string>
+    <string name="error_game_nested">Файлы игры вложены не в ту папку (%1$s). Переместите папки game и (по желанию) dlc прямо в:\n%2$s</string>
+    <string name="error_settings_save">Не удалось сохранить настройки: %1$s</string>
+    <string name="error_layout_editor">Не удалось запустить редактор раскладки: %1$s</string>
+    <string name="error_layout_requires_game">Редактор использует рендерер игры, поэтому требуется корректная установка.</string>
+    <string name="error_driver_extension">Выберите файл Vulkan .so или пакет .zip AdrenoTools/ExynosTools.</string>
+    <string name="error_driver_copy">Не удалось импортировать драйвер: %1$s</string>
+    <string name="error_open_files">Не удалось открыть папку приложения в «Файлах».</string>
+    <string name="driver_imported">%1$s скопирован. Он будет проверен и установлен при запуске игры.</string>
+    <string name="launcher_install_game">Установить файлы игры (.zip / папка)</string>
+    <string name="launcher_install_mod">Установить мод (.zip / папка)</string>
+    <string name="install_source_zip">Из ZIP-архива</string>
+    <string name="install_source_folder">Из папки</string>
+    <string name="install_source_iso_packages">Из пакетов ISO / DLC</string>
+    <string name="install_progress_title">Установка…</string>
+    <string name="install_progress_status">Скопировано файлов: %1$d, %2$s</string>
+    <string name="install_scanning">Чтение источника…</string>
+    <string name="install_cancel">Отмена</string>
+    <string name="install_done_game">Файлы игры установлены.</string>
+    <string name="install_done_iso_staged">Пакеты подготовлены. Нажмите «Запустить игру», чтобы проверить и установить игру и DLC.</string>
+    <string name="launcher_install_staged">Пакеты готовы. Запустите игру для проверки и установки.</string>
+    <string name="install_done_mod">Установлено модов: %1$d. Включите их в менеджере модов.</string>
+    <string name="install_cancelled">Установка отменена. Частично скопированные файлы остались на месте.</string>
+    <string name="error_install_failed">Сбой установки: %1$s</string>
+    <string name="error_install_no_game">В выбранном источнике нет game/default.xex. Выберите дамп с папками game и (по желанию) dlc.</string>
+    <string name="error_install_no_mod">В выбранном источнике нет mod.ini, поэтому мод не найден.</string>
+
+    <string-array name="driver_labels">
+        <item>Авто (рекомендуется)</item><item>Системный</item><item>Импортированный</item>
+    </string-array>
+    <string-array name="render_mode_labels">
+        <item>Авто (рекомендуется)</item><item>GMEM</item><item>Sysmem</item>
+    </string-array>
+
+    <string name="documents_save_title">Сохранения Marathon Recompiled</string>
+    <string name="documents_save_summary">Данные сохранений (SYS-DATA) и сохранения модов</string>
+    <string name="launcher_open_saves">Открыть папку сохранений</string>
+    <string name="launcher_controls_moved">Сенсорное управление, камера и стик перенесены в игровое меню опций (Input). Настраивайте их там во время игры.</string>
+    <string name="launcher_force_bc">Принудительно нативные BC-текстуры (отключить транс-кодирование ETC2; только для GPU с поддержкой BC)</string>
+    <string name="mod_manager_codes">Коды</string>
+    <string name="mod_manager_codes_hint">Встроенные патчи, применяемые при запуске. Сохраняются вместе со списком модов; перезапустите игру.</string>
+    <string name="launcher_updates">Обновления приложения</string>
+    <string name="update_current_version">Установленная версия: %1$s</string>
+    <string name="update_check">Проверить обновления</string>
+    <string name="update_checking">Проверка GitHub…</string>
+    <string name="update_error">Не удалось проверить обновления: %1$s</string>
+    <string name="update_up_to_date">Версия %1$s актуальна.</string>
+    <string name="update_up_to_date_short">У вас последняя версия.</string>
+    <string name="update_available">Доступна версия %1$s.</string>
+    <string name="update_dialog_title">Доступно обновление</string>
+    <string name="update_dialog_message">Версия %1$s (%2$s) готова к загрузке.\n\n%3$s</string>
+    <string name="update_later">Позже</string>
+    <string name="update_download">Скачать</string>
+    <string name="update_downloading">Загрузка обновления…</string>
+    <string name="update_download_progress">Скачано %1$s из %2$s</string>
+    <string name="update_ready_to_install">Обновление скачано. Продолжите в установщике Android.</string>
+</resources>
