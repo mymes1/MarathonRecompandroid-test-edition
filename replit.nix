@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.pkgconf
     pkgs.pkg-config
     pkgs.unzip
     pkgs.curl

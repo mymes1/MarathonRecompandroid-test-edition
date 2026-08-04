@@ -51,6 +51,12 @@ fi
 
 export VCPKG_ROOT="${VCPKG_ROOT:-$repo/thirdparty/vcpkg}"
 
+# Replit's Nix pkg-config wrapper does not resolve a package while vcpkg is
+# rewriting that package's .pc file. The post-install check is redundant for
+# this self-contained build and otherwise blocks libpng before host tools build.
+export VCPKG_DISABLE_METRICS=1
+export VCPKG_KEEP_ENV_VARS="VCPKG_DISABLE_METRICS"
+
 echo "==> Building host code-generation tools"
 "$repo/build_host_tools.sh"
 
