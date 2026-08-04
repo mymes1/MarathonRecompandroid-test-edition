@@ -5,3 +5,26 @@ channel = "stable-25_05"
 
 [agent]
 expertMode = true
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Build Android APK"
+
+[[workflows.workflow]]
+name = "Build Android APK"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "./build_android_apk_replit.sh"
+
+[workflows.workflow.metadata]
+outputType = "console"
