@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Replit one-command Android build:
+#   1. Build the host code-generation tools.
+#   2. Cross-compile the arm64-v8a native libraries.
+#   3. Package those libraries into a debug APK.
+#
+# Required:
+#   - ANDROID_NDK_HOME pointing to Android NDK r29 (29.0.14206865)
+#   - JDK 17 and Android SDK (compileSdk 34)
+#   - MarathonRecompLib/private/default.xex, shader.arc, shader_lt.arc
+set -euo pipefail
+
+repo="$(cd "$(dirname "$0")" && pwd)"
+
+if [ -z "${ANDROID_NDK_HOME:-}" ] && [ -n "${ANDROID_NDK_ROOT:-}" ]; then
+    export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
+fi
+
+if [ -z "${ANDROID_NDK_HOME:-}" ] || [ ! -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ]; then
+    echo "ERROR: Set ANDROID_NDK_HOME to an installed Android NDK r29 directory." >&2
+    exit 1
+fi
+
+for required_file in default.xex shader.arc shader_lt.arc; do
+    if [ ! -f "$repo/MarathonRecompLib/private/$required_file" ]; then
+        echo "ERROR: Missing MarathonRecompLib/private/$required_file." >&2
+        exit 1
+    fi
+done
+
+if ! command -v cmake >/dev/null || ! command -v ninja >/dev/null; then
+    echo "ERROR: cmake and ninja must be installed." >&2
+    exit 1
+fi
+
+if ! command -v java >/dev/null; then
+    echo "ERROR: A JDK is required to package the APK." >&2
+    exit 1
+fi
+
+export VCPKG_ROOT="${VCPKG_ROOT:-$repo/thirdparty/vcpkg}"
+
+echo "==> Building host code-generation tools"
+"$repo/build_host_tools.sh"
+
+echo "==> Building Android arm64-v8a native libraries"
+"$repo/build_android.sh"
+
+echo "==> Packaging native libraries into the debug APK"
+"$repo/build_apk.sh"
+
+apk="$repo/android-apk/app/build/outputs/apk/debug/app-debug.apk"
+if [ ! -f "$apk" ]; then
+    echo "ERROR: Gradle completed but did not produce $apk." >&2
+    exit 1
+fi
+
+echo
+echo "Build complete:"
+echo "  Native library: $repo/out/build/android-arm64/MarathonRecomp/libmain.so"
+echo "  Debug APK:      $apk"
