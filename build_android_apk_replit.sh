@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Replit one-command Android build:
 #   1. Build the host code-generation tools.
-#   2. Cross-compile the arm64-v8a native libraries.
-#   3. Package those libraries into a debug APK.
+#   2. Build ffmpeg static libraries for arm64-android (one-time, cached in out/ffmpeg-android-arm64).
+#   3. Cross-compile the arm64-v8a native libraries.
+#   4. Package those libraries into a debug APK.
 #
 # Required:
 #   - ANDROID_NDK_HOME pointing to Android NDK r29 (29.0.14206865)
@@ -55,6 +56,20 @@ export VCPKG_ROOT="${VCPKG_ROOT:-$repo/thirdparty/vcpkg}"
 # rewriting that package's .pc file. The local libpng overlay keeps the normal
 # port and skips only that nonessential post-install validation.
 export VCPKG_DISABLE_METRICS=1
+
+# In the Replit/NixOS environment the system zlib lives inside the Nix store
+# rather than a standard /usr/lib path, so the dynamic linker cannot find
+# libz.so.1 when the host tools (XenosRecomp, XenonRecomp) are executed during
+# the Android cross-compile step.  Resolve the library directory from
+# pkg-config and prepend it to LD_LIBRARY_PATH.
+if command -v pkg-config >/dev/null && pkg-config --exists zlib 2>/dev/null; then
+    _zlib_libdir="$(pkg-config --libs-only-L zlib | sed 's/-L//g' | xargs)"
+    if [ -n "$_zlib_libdir" ]; then
+        export LD_LIBRARY_PATH="${_zlib_libdir}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        echo "==> Added zlib to LD_LIBRARY_PATH: $_zlib_libdir"
+    fi
+    unset _zlib_libdir
+fi
 
 echo "==> Building host code-generation tools"
 "$repo/build_host_tools.sh"

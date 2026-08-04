@@ -28,6 +28,20 @@ if (ANDROID)
     if (NOT TARGET tomlplusplus::tomlplusplus)
         add_subdirectory("${XENON_RECOMP_THIRDPARTY_ROOT}/tomlplusplus")
     endif()
+
+    # XenonUtils is needed by the game binary (parses .xex files) even on Android.
+    # Because the XenonRecomp executable itself is replaced by prebuilt host tools
+    # we skip the full XenonRecomp CMakeLists.txt and add only XenonUtils + its deps.
+    # This ensures xbox.h (and related headers) are on the include path for MarathonRecomp.
+    set(THIRDPARTY_ROOT "${XENON_RECOMP_THIRDPARTY_ROOT}")
+    if (NOT TARGET disasm)
+        add_subdirectory("${XENON_RECOMP_THIRDPARTY_ROOT}/disasm"
+                         "${CMAKE_BINARY_DIR}/XenonRecomp/thirdparty/disasm")
+    endif()
+    if (NOT TARGET XenonUtils)
+        add_subdirectory("${MARATHON_RECOMP_TOOLS_ROOT}/XenonRecomp/XenonUtils"
+                         "${CMAKE_BINARY_DIR}/XenonRecomp/XenonUtils")
+    endif()
 else()
     add_subdirectory(${MARATHON_RECOMP_TOOLS_ROOT}/bc_diff)
     add_subdirectory(${MARATHON_RECOMP_TOOLS_ROOT}/file_to_c)

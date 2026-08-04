@@ -21,7 +21,23 @@ if [ -z "${ANDROID_NDK_HOME:-}" ]; then
     exit 1
 fi
 
-cmake --preset android-release
+# Build FFMPEG for Android if FFMPEG_CORE_LOCAL_LIB_DIR is not already set.
+# The ffmpeg-core CMake module expects static .a libs in <dir>/lib/.
+if [ -z "${FFMPEG_CORE_LOCAL_LIB_DIR:-}" ]; then
+    ffmpeg_out="$repo/out/ffmpeg-android-arm64"
+    if [ ! -f "$ffmpeg_out/lib/libavcodec.a" ]; then
+        echo "==> Building ffmpeg for Android arm64 (one-time, ~5 min)..."
+        bash "$repo/tools/ci/build_ffmpeg_android.sh" "$ANDROID_NDK_HOME" "$ffmpeg_out"
+    else
+        echo "==> Reusing cached ffmpeg build: $ffmpeg_out/lib"
+    fi
+    export FFMPEG_CORE_LOCAL_LIB_DIR="$ffmpeg_out/lib"
+fi
+echo "==> Using FFMPEG_CORE_LOCAL_LIB_DIR=$FFMPEG_CORE_LOCAL_LIB_DIR"
+
+cmake --preset android-release \
+    -DFFMPEG_CORE_LOCAL_LIB_DIR="$FFMPEG_CORE_LOCAL_LIB_DIR" \
+    -DMARATHON_RECOMP_OPTIMIZE_TOOLS=OFF
 cmake --build "$build_dir" --target MarathonRecomp
 
 so="$build_dir/MarathonRecomp/libmain.so"
