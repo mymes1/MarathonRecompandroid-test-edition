@@ -1131,13 +1131,22 @@ void *AndroidGetCustomVulkanLoader()
         return nullptr;
     }
 
+    // System driver uses the OS-provided Vulkan loader directly; no custom
+    // driver install or asset extraction is needed.  Skip EnsureVulkanDriverInstalled
+    // to avoid unnecessary external-storage scans and APK asset reads on boot.
+    if (g_runtimeVulkanDriver == EAndroidVulkanDriver::System)
+    {
+        LOG("Android Vulkan driver mode: System.");
+        return nullptr;
+    }
+
     EnsureVulkanDriverInstalled(turnipDir);
 
     std::string driverName;
     switch (g_runtimeVulkanDriver)
     {
         case EAndroidVulkanDriver::System:
-            LOG("Android Vulkan driver mode: System.");
+            // Unreachable; handled above.
             return nullptr;
 
         case EAndroidVulkanDriver::Bundled:

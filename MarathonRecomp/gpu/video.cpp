@@ -482,7 +482,13 @@ struct TextureDescriptorAllocator
 
     void free(uint32_t value)
     {
-        assert(value != NULL);
+        // Sentinel null-texture slots (indices 0..TEXTURE_DESCRIPTOR_NULL_COUNT-1)
+        // are permanently bound and must never re-enter the free-list.
+        // When the pool overflows, allocate() returns TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D
+        // (0) as a safe fallback; attempting to free that index would corrupt the
+        // recycled-index list and cause a crash on the next allocation.
+        if (value < TEXTURE_DESCRIPTOR_NULL_COUNT)
+            return;
         std::lock_guard lock(mutex);
         freed.push_back(value);
     }
@@ -1588,17 +1594,22 @@ static uint32_t g_textureDescriptorSize = TEXTURE_DESCRIPTOR_SIZE;
 static uint32_t g_samplerDescriptorSize = SAMPLER_DESCRIPTOR_SIZE;
 
 #if defined(__ANDROID__)
-// The Galaxy Tab A9 Wi-Fi (SM-X110) uses Samsung's Mali-G57 driver. It advertises
-// descriptor-indexing limits large enough for the desktop bindless layout, but crashes in
-// libGLES_mali while compiling shaders with that layout. Keep its layout deliberately
-// small; the renderer's descriptor allocator already supports this fallback.
-static constexpr size_t SM_X110_TEXTURE_DESCRIPTOR_SIZE = 1024;
+// Mali-based devices advertise descriptor-indexing limits large enough for the desktop
+// bindless layout but crash inside the system Vulkan driver (libGLES_mali) while
+// compiling shaders with that layout. Keep the descriptor pool deliberately small;
+// the renderer's descriptor allocator already supports this fallback.
+// The Samsung Galaxy Tab A9 family (SM-X110 Wi-Fi, SM-X115 LTE, SM-X116/SM-X117 5G)
+// all share the same Mali-G57 chip and require this cap regardless of connectivity.
+static constexpr size_t MALI_TEXTURE_DESCRIPTOR_SIZE = 1024;
 
-static bool IsGalaxyTabA9Wifi()
+static bool IsGalaxyTabA9()
 {
     char model[PROP_VALUE_MAX]{};
     __system_property_get("ro.product.model", model);
-    return strcmp(model, "SM-X110") == 0;
+    // Match all Tab A9 connectivity variants: SM-X110 (Wi-Fi), SM-X115 (LTE),
+    // SM-X116 / SM-X117 (5G regional variants). The A9+ uses Snapdragon/Adreno
+    // and does not need this cap, but is not harmed by it either.
+    return strncmp(model, "SM-X11", 6) == 0;
 }
 #endif
 
@@ -2170,11 +2181,14 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     // by the BC fallback path. Prefer the slower RGBA CPU decode on Mali; it is
     // intentionally selected before resource loading and is safer than losing
     // the process during Vulkan image creation.
+    // Also covers Samsung Galaxy Tab A9 variants (SM-X110/SM-X115/SM-X116/SM-X117)
+    // whose Mali-G57 driver exhibits the same ETC2 creation fault.
     {
         std::string deviceName = g_device->getDescription().name;
         std::transform(deviceName.begin(), deviceName.end(), deviceName.begin(),
             [](unsigned char c) { return char(std::tolower(c)); });
-        if (deviceName.find("mali") != std::string::npos || deviceName.find("meow") != std::string::npos)
+        if (deviceName.find("mali") != std::string::npos || deviceName.find("meow") != std::string::npos ||
+            IsGalaxyTabA9())
         {
             g_capabilities.textureCompressionETC2 = false;
             LOG("Mali compatibility path: using CPU RGBA texture fallback.");
@@ -2197,31 +2211,27 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
         g_samplerDescriptorSize = uint32_t(std::min<size_t>(SAMPLER_DESCRIPTOR_SIZE, g_capabilities.maxSamplerDescriptors));
 
 #if defined(__ANDROID__)
-    // Android 15's stock Mali driver on the Tab A9 Wi-Fi faults in libGLES_mali while
-    // compiling the renderer's large bindless descriptor layouts. Apply this after
-    // reading the driver limits but before loading cached shaders or allocating sets.
-    if (IsGalaxyTabA9Wifi())
-    {
-        g_textureDescriptorSize = uint32_t(std::min<size_t>(g_textureDescriptorSize, SM_X110_TEXTURE_DESCRIPTOR_SIZE));
-        LOGF_WARNING("SM-X110 compatibility path: limiting bindless texture descriptors to {}.", g_textureDescriptorSize);
-    }
-
-    // Clamp the allocator to the final descriptor size so it never hands out
-    // an index beyond the descriptor-set array.  This is critical on Mali
-    // (SM-X110 and similar) where writing past the end of a small bindless
-    // pool causes a SIGSEGV inside libGLES_mali / the system Vulkan driver.
-    g_textureDescriptorAllocator.setLimit(g_textureDescriptorSize);
-
-    // Stock Mali Vulkan drivers are considerably less tolerant of optional paths
-    // than Adreno/Turnip. Keep the device on the conservative render path: these
-    // features are optional and their absence is already handled by the renderer.
-    // In particular, do not submit upload-heap or present-wait operations on Mali.
+    // Mali-based devices (and the Samsung Galaxy Tab A9 family in particular) crash
+    // inside libGLES_mali / the system Vulkan driver when the renderer's large
+    // bindless descriptor layout is used.  Detect Mali by GPU name first; fall back
+    // to the model-number check for devices where the GPU name is not yet available.
+    // Apply before loading cached shaders or allocating descriptor sets.
     {
         std::string deviceName = g_device->getDescription().name;
         std::transform(deviceName.begin(), deviceName.end(), deviceName.begin(),
             [](unsigned char c) { return char(std::tolower(c)); });
-        if (deviceName.find("mali") != std::string::npos || deviceName.find("meow") != std::string::npos)
+        const bool isMali = deviceName.find("mali") != std::string::npos ||
+                            deviceName.find("meow") != std::string::npos ||
+                            IsGalaxyTabA9();
+
+        if (isMali)
         {
+            g_textureDescriptorSize = uint32_t(std::min<size_t>(g_textureDescriptorSize, MALI_TEXTURE_DESCRIPTOR_SIZE));
+            LOGF_WARNING("Mali compatibility path: limiting bindless texture descriptors to {} to prevent libGLES_mali shader compiler crash.", g_textureDescriptorSize);
+
+            // Stock Mali Vulkan drivers are considerably less tolerant of optional
+            // paths than Adreno/Turnip.  Disable features that cause SIGSEGV inside
+            // the system driver on these devices.
             g_capabilities.gpuUploadHeap = false;
             g_capabilities.presentWait = false;
             g_capabilities.displayTiming = false;
@@ -2231,6 +2241,12 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
             LOG("Mali compatibility path: conservative Vulkan capabilities enabled.");
         }
     }
+
+    // Clamp the allocator to the final descriptor size so it never hands out
+    // an index beyond the descriptor-set array.  This is critical on Mali
+    // (SM-X110 and similar) where writing past the end of a small bindless
+    // pool causes a SIGSEGV inside libGLES_mali / the system Vulkan driver.
+    g_textureDescriptorAllocator.setLimit(g_textureDescriptorSize);
 #endif
 
     if (g_textureDescriptorSize < TEXTURE_DESCRIPTOR_SIZE || g_samplerDescriptorSize < SAMPLER_DESCRIPTOR_SIZE)

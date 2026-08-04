@@ -576,6 +576,12 @@ static void DrawOption
                 {
                     auto it = config->EnumTemplateReverse.find(config->Value);
 
+                    // Guard: if the current value is not present in the reverse
+                    // template (e.g. an enum variant not yet exposed in this build),
+                    // snap to the first valid entry rather than dereferencing end().
+                    if (it == config->EnumTemplateReverse.end())
+                        it = config->EnumTemplateReverse.begin();
+
                     if (decrement)
                     {
                         if (it == config->EnumTemplateReverse.begin())
