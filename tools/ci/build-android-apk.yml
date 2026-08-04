@@ -2,7 +2,7 @@ name: build-android-apk
 
 on:
   push:
-    branches: ["arena/019fbd91-marathonrecomp"]
+    branches: ["arena/019fc126-marathonrecomp"]
   workflow_dispatch:
     inputs:
       build_files_url:
