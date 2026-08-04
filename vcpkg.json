@@ -13,6 +13,9 @@
         "curl"
     ],
     "vcpkg-configuration": {
+        "overlay-ports": [
+            "vcpkg/ports"
+        ],
         "overlay-triplets": [
             "vcpkg/triplets"
         ]
