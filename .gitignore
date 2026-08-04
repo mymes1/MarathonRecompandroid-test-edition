@@ -419,6 +419,9 @@ android-apk/captures/
 out/build/android-arm64/
 out/build/linux-host-tools/
 
+## Workspace-local Android SDK/NDK installed by setup_android_build_dependencies.sh
+.android-sdk/
+
 ## Generated (build-time) files
 MarathonRecomp/version.h
 MarathonRecomp/version.cpp

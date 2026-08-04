@@ -11,14 +11,25 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")" && pwd)"
+workspace_sdk="$repo/.android-sdk"
+ndk_version="29.0.14206865"
 
 if [ -z "${ANDROID_NDK_HOME:-}" ] && [ -n "${ANDROID_NDK_ROOT:-}" ]; then
     export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
 fi
 
+if [ -z "${ANDROID_NDK_HOME:-}" ] && [ -f "$workspace_sdk/ndk/$ndk_version/build/cmake/android.toolchain.cmake" ]; then
+    export ANDROID_SDK_ROOT="$workspace_sdk"
+    export ANDROID_HOME="$workspace_sdk"
+    export ANDROID_NDK_HOME="$workspace_sdk/ndk/$ndk_version"
+fi
+
 if [ -z "${ANDROID_NDK_HOME:-}" ] || [ ! -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ]; then
-    echo "ERROR: Set ANDROID_NDK_HOME to an installed Android NDK r29 directory." >&2
-    exit 1
+    echo "==> Android NDK not found; installing Android build dependencies"
+    "$repo/setup_android_build_dependencies.sh"
+    export ANDROID_SDK_ROOT="$workspace_sdk"
+    export ANDROID_HOME="$workspace_sdk"
+    export ANDROID_NDK_HOME="$workspace_sdk/ndk/$ndk_version"
 fi
 
 for required_file in default.xex shader.arc shader_lt.arc; do
