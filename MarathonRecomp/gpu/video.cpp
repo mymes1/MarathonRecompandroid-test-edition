@@ -432,7 +432,20 @@ struct TextureDescriptorAllocator
 {
     Mutex mutex;
     uint32_t capacity = TEXTURE_DESCRIPTOR_NULL_COUNT;
+    // Hard upper bound enforced after device creation.  On devices with small
+    // bindless descriptor pools (e.g. Mali SM-X110 capped at 1024) the
+    // descriptor set is only that wide; writing beyond it corrupts GPU memory
+    // and crashes the driver.  Defaults to UINT32_MAX (uncapped) until
+    // setLimit() is called with the real g_textureDescriptorSize.
+    uint32_t limit = UINT32_MAX;
+    bool overflowWarned = false;
     std::vector<uint32_t> freed;
+
+    void setLimit(uint32_t newLimit)
+    {
+        std::lock_guard lock(mutex);
+        limit = newLimit;
+    }
 
     uint32_t allocate()
     {
@@ -444,10 +457,24 @@ struct TextureDescriptorAllocator
             value = freed.back();
             freed.pop_back();
         }
-        else
+        else if (capacity < limit)
         {
             value = capacity;
             ++capacity;
+        }
+        else
+        {
+            // The descriptor pool is full.  Return the null-2D slot (a safe
+            // 1×1 blank texture already bound at index 0) so the GPU doesn't
+            // read from an unmapped descriptor, which would crash Mali/GLES.
+            if (!overflowWarned)
+            {
+                overflowWarned = true;
+                fprintf(stderr, "[video] TextureDescriptorAllocator: descriptor pool exhausted "
+                    "(limit=%u). Returning null descriptor; some textures may render blank.\n",
+                    limit);
+            }
+            return TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D;
         }
 
         return value;
@@ -2178,6 +2205,12 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
         g_textureDescriptorSize = uint32_t(std::min<size_t>(g_textureDescriptorSize, SM_X110_TEXTURE_DESCRIPTOR_SIZE));
         LOGF_WARNING("SM-X110 compatibility path: limiting bindless texture descriptors to {}.", g_textureDescriptorSize);
     }
+
+    // Clamp the allocator to the final descriptor size so it never hands out
+    // an index beyond the descriptor-set array.  This is critical on Mali
+    // (SM-X110 and similar) where writing past the end of a small bindless
+    // pool causes a SIGSEGV inside libGLES_mali / the system Vulkan driver.
+    g_textureDescriptorAllocator.setLimit(g_textureDescriptorSize);
 
     // Stock Mali Vulkan drivers are considerably less tolerant of optional paths
     // than Adreno/Turnip. Keep the device on the conservative render path: these
