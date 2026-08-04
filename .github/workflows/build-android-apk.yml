@@ -145,10 +145,16 @@ jobs:
             cp ci-build-files/drivers/*.so android-apk/app/src/main/assets/bundled_driver/
           fi
 
-      - name: Fail early if game files are missing
+      - name: Verify game files
         run: |
           test -f MarathonRecompLib/private/default.xex || { \
-            echo "::error::Game files are missing. Set the BUILD_FILES_URL repository variable or pass build_files_url to this workflow."; \
+            echo "::error::Game files are missing from MarathonRecompLib/private. Commit them to the build branch, or set BUILD_FILES_URL / pass build_files_url to provide them at build time."; \
+            exit 1; }
+          test -f MarathonRecompLib/private/shader.arc || { \
+            echo "::error::shader.arc is missing from MarathonRecompLib/private."; \
+            exit 1; }
+          test -f MarathonRecompLib/private/shader_lt.arc || { \
+            echo "::error::shader_lt.arc is missing from MarathonRecompLib/private."; \
             exit 1; }
 
       # ── Gradle cache ────────────────────────────────────────────────────────
