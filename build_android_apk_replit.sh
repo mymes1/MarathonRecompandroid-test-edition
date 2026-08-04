@@ -6,7 +6,7 @@
 #
 # Required:
 #   - ANDROID_NDK_HOME pointing to Android NDK r29 (29.0.14206865)
-#   - JDK 17 and Android SDK (compileSdk 34)
+#   - JDK 17+ (17, 19, 21 all work) and Android SDK (compileSdk 35)
 #   - MarathonRecompLib/private/default.xex, shader.arc, shader_lt.arc
 set -euo pipefail
 

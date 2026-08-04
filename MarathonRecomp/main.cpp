@@ -20,7 +20,9 @@
 #include <user/registry.h>
 #include <kernel/xdbf.h>
 #include <install/installer.h>
+#ifndef __ANDROID__
 #include <install/update_checker.h>
+#endif
 #include <os/logger.h>
 #include <os/process.h>
 #include <os/registry.h>
@@ -350,8 +352,10 @@ int main(int argc, char *argv[])
     double timeDifferenceSeconds = difftime(timeNow, Config::LastChecked);
     if (timeDifferenceSeconds > TimeBetweenUpdateChecksInSeconds)
     {
+#ifndef __ANDROID__
         UpdateChecker::initialize();
         UpdateChecker::start();
+#endif
         Config::LastChecked = timeNow;
         Config::Save();
     }

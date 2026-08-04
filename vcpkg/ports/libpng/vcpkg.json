@@ -1,0 +1,19 @@
+{
+  "name": "libpng",
+  "version": "1.6.44",
+  "description": "libpng is a library implementing an interface for reading and writing PNG (Portable Network Graphics) format files",
+  "homepage": "https://github.com/glennrp/libpng",
+  "license": "libpng-2.0",
+  "dependencies": [
+    "zlib"
+  ],
+  "features": {
+    "apng": {
+      "description": "Animated PNG support (backward compatible)"
+    },
+    "tools": {
+      "description": "Build the libpng tools",
+      "supports": "!android & !ios"
+    }
+  }
+}

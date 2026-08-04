@@ -38,6 +38,8 @@ import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
@@ -411,9 +413,18 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         setContentView(mLayout);
 
+        // On Android 15 (API 35) edge-to-edge is enforced for apps targeting API 35;
+        // opt into it explicitly on API 30+ so the window layout is consistent.
+        if (Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+        }
+
         setWindowStyle(false);
 
-        getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(this);
+        // API 30+ uses WindowInsetsController; keep the legacy listener only for older devices.
+        if (Build.VERSION.SDK_INT < 30) {
+            getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(this);
+        }
 
         // Get filename from "Open with" of another application
         Intent intent = getIntent();
@@ -779,35 +790,70 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                 }
                 break;
             case COMMAND_CHANGE_WINDOW_STYLE:
-                if (Build.VERSION.SDK_INT >= 19 /* Android 4.4 (KITKAT) */) {
-                    if (context instanceof Activity) {
-                        Window window = ((Activity) context).getWindow();
-                        if (window != null) {
-                            if ((msg.obj instanceof Integer) && ((Integer) msg.obj != 0)) {
+                if (context instanceof Activity) {
+                    Window window = ((Activity) context).getWindow();
+                    if (window != null) {
+                        boolean fullscreen = (msg.obj instanceof Integer) && ((Integer) msg.obj != 0);
+                        if (Build.VERSION.SDK_INT >= 30 /* Android 11 */) {
+                            // Modern API: WindowInsetsController replaces deprecated
+                            // setSystemUiVisibility / FLAG_FULLSCREEN (the latter is a
+                            // no-op for apps targeting API 35 on Android 15).
+                            WindowInsetsController controller = window.getInsetsController();
+                            if (controller != null) {
+                                if (fullscreen) {
+                                    controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                                    controller.setSystemBarsBehavior(
+                                            WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                                    SDLActivity.mFullscreenModeActive = true;
+                                } else {
+                                    controller.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                                    SDLActivity.mFullscreenModeActive = false;
+                                }
+                            }
+                            // Use ALWAYS (API 31+) so the game fills the display even when
+                            // a device has a punch-hole or notch; fall back to SHORT_EDGES
+                            // on API 28-30.
+                            if (Build.VERSION.SDK_INT >= 31) {
+                                window.getAttributes().layoutInDisplayCutoutMode =
+                                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+                            } else {
+                                window.getAttributes().layoutInDisplayCutoutMode =
+                                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                            }
+                        } else if (Build.VERSION.SDK_INT >= 19 /* Android 4.4 (KITKAT) */) {
+                            // Legacy path for Android 10 and below.
+                            if (fullscreen) {
+                                @SuppressWarnings("deprecation")
                                 int flags = View.SYSTEM_UI_FLAG_FULLSCREEN |
                                         View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                                         View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
                                         View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
                                         View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
                                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.INVISIBLE;
+                                //noinspection deprecation
                                 window.getDecorView().setSystemUiVisibility(flags);
+                                //noinspection deprecation
                                 window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
                                 window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
                                 SDLActivity.mFullscreenModeActive = true;
                             } else {
+                                @SuppressWarnings("deprecation")
                                 int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_VISIBLE;
+                                //noinspection deprecation
                                 window.getDecorView().setSystemUiVisibility(flags);
                                 window.addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
+                                //noinspection deprecation
                                 window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
                                 SDLActivity.mFullscreenModeActive = false;
                             }
                             if (Build.VERSION.SDK_INT >= 28 /* Android 9 (Pie) */) {
-                                window.getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                                window.getAttributes().layoutInDisplayCutoutMode =
+                                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
                             }
                         }
-                    } else {
-                        Log.e(TAG, "error handling message, getContext() returned no Activity");
                     }
+                } else {
+                    Log.e(TAG, "error handling message, getContext() returned no Activity");
                 }
                 break;
             case COMMAND_TEXTEDIT_HIDE:
@@ -1640,20 +1686,32 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     private final Runnable rehideSystemUi = new Runnable() {
         @Override
         public void run() {
-            if (Build.VERSION.SDK_INT >= 19 /* Android 4.4 (KITKAT) */) {
+            if (Build.VERSION.SDK_INT >= 30 /* Android 11 */) {
+                WindowInsetsController controller = SDLActivity.this.getWindow().getInsetsController();
+                if (controller != null) {
+                    controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                    controller.setSystemBarsBehavior(
+                            WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                }
+            } else if (Build.VERSION.SDK_INT >= 19 /* Android 4.4 (KITKAT) */) {
+                @SuppressWarnings("deprecation")
                 int flags = View.SYSTEM_UI_FLAG_FULLSCREEN |
                         View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                         View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
                         View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
                         View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
                         View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.INVISIBLE;
-
+                //noinspection deprecation
                 SDLActivity.this.getWindow().getDecorView().setSystemUiVisibility(flags);
             }
         }
     };
 
+    @Override
+    @SuppressWarnings("deprecation")
     public void onSystemUiVisibilityChange(int visibility) {
+        // Only reached on API < 30; API 30+ uses WindowInsetsController with
+        // BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE, which re-hides automatically.
         if (SDLActivity.mFullscreenModeActive && ((visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0 || (visibility & View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) == 0)) {
 
             Handler handler = getWindow().getDecorView().getHandler();

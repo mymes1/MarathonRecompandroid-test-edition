@@ -203,7 +203,6 @@ endif()
 set(MARATHON_RECOMP_INSTALL_CXX_SOURCES
     "install/installer.cpp"
     "install/iso_file_system.cpp"
-    "install/update_checker.cpp"
     "install/xcontent_file_system.cpp"
     "install/hashes/game.cpp"
     "install/hashes/episode_sonic.cpp"
@@ -453,7 +452,12 @@ if (ANDROID)
     )
 endif()
 
-find_package(CURL REQUIRED)
+# The update checker (the only CURL consumer) is not built for Android; updates
+# are delivered via sideload / the Play Store rather than the GitHub releases API.
+if (NOT ANDROID)
+    list(APPEND MARATHON_RECOMP_INSTALL_CXX_SOURCES "install/update_checker.cpp")
+    find_package(CURL REQUIRED)
+endif()
 
 if (MARATHON_RECOMP_METAL)
     target_compile_definitions(MarathonRecomp PRIVATE MARATHON_RECOMP_METAL)
@@ -503,12 +507,11 @@ target_link_libraries(MarathonRecomp PRIVATE
     tomlplusplus::tomlplusplus
     MarathonRecompLib
     xxHash::xxhash
-    CURL::libcurl
     plume
 )
 
 if (NOT ANDROID)
-    target_link_libraries(MarathonRecomp PRIVATE nfd::nfd)
+    target_link_libraries(MarathonRecomp PRIVATE nfd::nfd CURL::libcurl)
 endif()
 
 target_link_libraries(MarathonRecomp PRIVATE ffmpeg)

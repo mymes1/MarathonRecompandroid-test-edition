@@ -38,8 +38,8 @@ echo "==> Installing Android SDK platform, build tools, and NDK r29"
 yes | "$sdkmanager" --sdk_root="$sdk_root" --licenses >/dev/null || true
 "$sdkmanager" --sdk_root="$sdk_root" \
     "platform-tools" \
-    "platforms;android-34" \
-    "build-tools;34.0.0" \
+    "platforms;android-35" \
+    "build-tools;35.0.0" \
     "ndk;$ndk_version"
 
 if [ ! -f "$sdk_root/ndk/$ndk_version/build/cmake/android.toolchain.cmake" ]; then

@@ -65,8 +65,12 @@ if(NOT _VCPKG_LINUX_CLANG_TOOLCHAIN)
     string(APPEND CMAKE_C_FLAGS_RELEASE_INIT " ${VCPKG_C_FLAGS_RELEASE} ")
     string(APPEND CMAKE_CXX_FLAGS_RELEASE_INIT " ${VCPKG_CXX_FLAGS_RELEASE} ")
 
-    # Use LLVM's lld linker
-    set(CMAKE_LINKER_TYPE LLD)
+    # Use LLVM's lld linker when available (may not be present in all environments)
+    find_program(_LLD_LINKER NAMES ld.lld lld)
+    if(_LLD_LINKER)
+        set(CMAKE_LINKER_TYPE LLD)
+    endif()
+    unset(_LLD_LINKER CACHE)
 
     string(APPEND CMAKE_MODULE_LINKER_FLAGS_INIT " ${VCPKG_LINKER_FLAGS} ")
     string(APPEND CMAKE_SHARED_LINKER_FLAGS_INIT " ${VCPKG_LINKER_FLAGS} ")

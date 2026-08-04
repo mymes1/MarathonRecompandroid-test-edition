@@ -1,0 +1,8 @@
+{
+  "name": "brotli",
+  "version": "1.1.0",
+  "port-version": 1,
+  "description": "a generic-purpose lossless compression algorithm",
+  "homepage": "https://github.com/google/brotli",
+  "license": "MIT"
+}

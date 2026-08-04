@@ -11,7 +11,7 @@ android {
     if (buildAsApplication) {
         namespace "org.libsdl.app"
     }
-    compileSdkVersion 34
+    compileSdkVersion 35
     ndkVersion "29.0.14206865"
     defaultConfig {
         // Java sources and JNI bindings stay in the org.libsdl.app namespace (SDL
@@ -19,7 +19,7 @@ android {
         // changes. Renaming this orphans data under Android/data/<old id>.
         applicationId "com.sega.marathon"
         minSdkVersion 29
-        targetSdkVersion 34
+        targetSdkVersion 35
         versionCode 1
         versionName "1.0.0"
     }

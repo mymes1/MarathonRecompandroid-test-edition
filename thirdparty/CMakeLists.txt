@@ -40,6 +40,26 @@ else()
     message(FATAL_ERROR "Unsupported CPU architecture: ${BASE_ARCHITECTURE}")
 endif()
 
+# For Android cross-compiles vcpkg is not used, so build freetype from the
+# bundled source tree and expose the Freetype::Freetype target before
+# msdf-atlas-gen (which requires it via msdfgen-ext).
+if (ANDROID)
+    set(FT_DISABLE_ZLIB      ON  CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BZIP2     ON  CACHE BOOL "" FORCE)
+    set(FT_DISABLE_PNG       ON  CACHE BOOL "" FORCE)
+    set(FT_DISABLE_HARFBUZZ  ON  CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BROTLI    ON  CACHE BOOL "" FORCE)
+    set(FT_ENABLE_ERROR_STRINGS OFF CACHE BOOL "" FORCE)
+    add_subdirectory("${MARATHON_RECOMP_THIRDPARTY_ROOT}/freetype" freetype_build)
+    # msdfgen calls find_package(Freetype) – satisfy it with the in-tree target.
+    if (NOT TARGET Freetype::Freetype)
+        add_library(Freetype::Freetype ALIAS freetype)
+    endif()
+    set(FREETYPE_FOUND TRUE CACHE BOOL "" FORCE)
+    set(FREETYPE_INCLUDE_DIRS "${MARATHON_RECOMP_THIRDPARTY_ROOT}/freetype/include" CACHE PATH "" FORCE)
+    set(FREETYPE_LIBRARIES freetype CACHE STRING "" FORCE)
+endif()
+
 add_subdirectory("${MARATHON_RECOMP_THIRDPARTY_ROOT}/msdf-atlas-gen")
 
 # The GUI installer wizard (and its native file picker dependency) is not built for

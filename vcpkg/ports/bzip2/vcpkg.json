@@ -1,0 +1,13 @@
+{
+  "name": "bzip2",
+  "version": "1.0.8",
+  "port-version": 6,
+  "description": "lossless block-sorting data compression",
+  "homepage": "https://sourceware.org/bzip2",
+  "license": "bzip2-1.0.6",
+  "features": {
+    "tool": {
+      "description": "Builds bzip2 and bunzip2 executables"
+    }
+  }
+}
