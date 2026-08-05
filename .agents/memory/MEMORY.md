@@ -1,1 +1,2 @@
 - [Mali-G57 Android 15 crash fixes](mali-g57-crash.md) — mixed pipeline layout (bindless + storage-buffer) + unguarded MSAA depth shaders crash libGLES_mali on SM-X110.
+- [Mali texture fallback](mali-texture-fallback.md) — CPU-decoded BC textures must retain sRGB sampling semantics or lighting can appear washed out/glossy.

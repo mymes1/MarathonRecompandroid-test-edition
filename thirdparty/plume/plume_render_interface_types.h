@@ -169,6 +169,7 @@ namespace plume {
         ETC2_RGBA8_UNORM_SRGB,
         EAC_R11_UNORM,
         EAC_R11G11_UNORM,
+        R8G8B8A8_UNORM_SRGB,
         MAX
     };
 
@@ -545,6 +546,7 @@ namespace plume {
             return 8;
         case RenderFormat::R8G8B8A8_TYPELESS:
         case RenderFormat::R8G8B8A8_UNORM:
+        case RenderFormat::R8G8B8A8_UNORM_SRGB:
         case RenderFormat::R8G8B8A8_UINT:
         case RenderFormat::R8G8B8A8_SNORM:
         case RenderFormat::R8G8B8A8_SINT:
@@ -636,6 +638,7 @@ namespace plume {
         case RenderFormat::R32G32_SINT:
         case RenderFormat::R8G8B8A8_TYPELESS:
         case RenderFormat::R8G8B8A8_UNORM:
+        case RenderFormat::R8G8B8A8_UNORM_SRGB:
         case RenderFormat::R8G8B8A8_UINT:
         case RenderFormat::R8G8B8A8_SNORM:
         case RenderFormat::R8G8B8A8_SINT:

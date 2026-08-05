@@ -6362,6 +6362,8 @@ static RenderFormat ConvertDXGIFormat(ddspp::DXGIFormat format)
         return RenderFormat::R8G8B8A8_TYPELESS;
     case ddspp::R8G8B8A8_UNORM:
         return RenderFormat::R8G8B8A8_UNORM;
+    case ddspp::R8G8B8A8_UNORM_SRGB:
+        return RenderFormat::R8G8B8A8_UNORM_SRGB;
     case ddspp::R8G8B8A8_UINT:
         return RenderFormat::R8G8B8A8_UINT;
     case ddspp::R8G8B8A8_SNORM:
@@ -6595,17 +6597,8 @@ static bool GetBCnFallback(RenderFormat format, const uint8_t* data, size_t data
     case RenderFormat::BC2_UNORM_SRGB:
     case RenderFormat::BC3_UNORM_SRGB:
     case RenderFormat::BC7_UNORM_SRGB:
-        // The transcode targets have proper sRGB variants; only the plain decode loses the
-        // automatic sRGB-to-linear conversion (RenderFormat has no R8G8B8A8_UNORM_SRGB).
-        if (!etc2)
-        {
-            static bool s_warnedSrgb;
-            if (!s_warnedSrgb)
-            {
-                s_warnedSrgb = true;
-                LOG_WARNING("Decoding sRGB BC texture to UNORM: sampling will return sRGB-encoded values.");
-            }
-        }
+        // Both the transcode and RGBA8 decode targets preserve the texture's sRGB
+        // sampling semantics.
         break;
     default:
         break;
@@ -6639,7 +6632,7 @@ static bool GetBCnFallback(RenderFormat format, const uint8_t* data, size_t data
         else
         {
             fallback.mode = BCnFallbackMode::Decode;
-            fallback.targetFormat = RenderFormat::R8G8B8A8_UNORM;
+            fallback.targetFormat = srgb ? RenderFormat::R8G8B8A8_UNORM_SRGB : RenderFormat::R8G8B8A8_UNORM;
             fallback.bytesPerPixel = 4;
             fallback.decodeBlock = &bcdec_bc1;
         }
@@ -6670,7 +6663,7 @@ static bool GetBCnFallback(RenderFormat format, const uint8_t* data, size_t data
         else
         {
             fallback.mode = BCnFallbackMode::Decode;
-            fallback.targetFormat = RenderFormat::R8G8B8A8_UNORM;
+            fallback.targetFormat = srgb ? RenderFormat::R8G8B8A8_UNORM_SRGB : RenderFormat::R8G8B8A8_UNORM;
             fallback.bytesPerPixel = 4;
             fallback.decodeBlock = bc2 ? &bcdec_bc2 : (bc3 ? &bcdec_bc3 : &bcdec_bc7);
         }
