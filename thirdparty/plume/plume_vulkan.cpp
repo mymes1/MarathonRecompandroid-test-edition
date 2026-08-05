@@ -3940,23 +3940,28 @@ namespace plume {
         }
 
         VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures = {};
-        // VK_KHR_buffer_device_address was promoted to Vulkan 1.2 core. Some Android
-        // GPU drivers (observed on Mali-G57 / Android 15) omit the extension name from
-        // vkEnumerateDeviceExtensionProperties once the device reports apiVersion >= 1.2,
-        // even though the feature is still queryable/usable via the core feature struct.
-        // If we only look at the extension name here, bufferDeviceAddressFeatures never
-        // gets queried, capabilities.bufferDeviceAddress ends up false, and vkGetDeviceProcAddr
-        // never resolves vkGetBufferDeviceAddress -- so any call into it (used throughout the
-        // renderer for bindless vertex/index/constant buffer references) crashes with SIGSEGV
-        // at pc=0x0. Query the feature whenever either the extension is listed or the physical
-        // device is 1.2+; this only widens detection and cannot regress devices that already work.
-        const bool bufferDeviceAddressFound = (supportedOptionalExtensions.find(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) != supportedOptionalExtensions.end()) ||
-            (physicalDeviceProperties.apiVersion >= VK_API_VERSION_1_2);
-        if (bufferDeviceAddressFound) {
-            bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-            bufferDeviceAddressFeatures.pNext = featuresChain;
-            featuresChain = &bufferDeviceAddressFeatures;
-        }
+        // VK_KHR_buffer_device_address was promoted to Vulkan 1.2 core. Android GPU
+        // drivers exhibit two distinct failure modes that can both leave
+        // vkGetBufferDeviceAddress unresolved (null) and crash with SIGSEGV at pc=0x0:
+        //
+        //   (a) 1.2+ devices (e.g. some Mali-G57 / Android 15 builds) omit the
+        //       extension name from vkEnumerateDeviceExtensionProperties even though
+        //       the feature is queryable/usable via the core feature struct.
+        //
+        //   (b) 1.1 devices (e.g. MT8781 / Mali-G57 MC2 / Android 15) never list
+        //       the KHR extension either, so the previous 1.2-gated guard also misses
+        //       them; the feature struct is never queried and the function pointer is
+        //       never resolved.
+        //
+        // Fix: always append the feature struct to the query chain — drivers silently
+        // ignore pNext structs whose sType they don't recognise, so this is safe for
+        // any device. If the driver fills in bufferDeviceAddress == VK_TRUE we know
+        // the feature works; we then enable it and, for pre-1.2 devices that omit the
+        // extension name, force the KHR extension into the enabled set so that
+        // vkGetDeviceProcAddr (invoked by volkLoadDevice) resolves the entry point.
+        bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+        bufferDeviceAddressFeatures.pNext = featuresChain;
+        featuresChain = &bufferDeviceAddressFeatures;
 
         VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures = {};
         const bool portabilityFound = supportedOptionalExtensions.find(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME) != supportedOptionalExtensions.end();
@@ -4055,6 +4060,20 @@ namespace plume {
         if (bufferDeviceAddressSupported) {
             bufferDeviceAddressFeatures.pNext = createDeviceChain;
             createDeviceChain = &bufferDeviceAddressFeatures;
+
+            // On pre-1.2 devices the entry point is provided by VK_KHR_buffer_device_address.
+            // Some drivers (e.g. Mali-G57 / MT8781 / Android 15 running Vulkan 1.1) support the
+            // feature but omit the extension name from vkEnumerateDeviceExtensionProperties.
+            // In that case the extension is never added to enabledExtensions and vkGetDeviceProcAddr
+            // (called inside volkLoadDevice) returns null for vkGetBufferDeviceAddress, causing a
+            // SIGSEGV at pc=0x0 on the first buffer upload. Force-insert the extension so the
+            // driver's entry point is resolved. vkCreateDevice accepts it silently when the
+            // underlying hardware actually supports BDA even if the name wasn't advertised.
+            if (physicalDeviceProperties.apiVersion < VK_API_VERSION_1_2 &&
+                supportedOptionalExtensions.find(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) == supportedOptionalExtensions.end())
+            {
+                supportedOptionalExtensions.insert(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+            }
         }
         else {
             // The renderer relies on vkGetBufferDeviceAddress for bindless vertex/index/constant
