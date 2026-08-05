@@ -5,6 +5,7 @@
 #include "imgui/imgui_font_builder.h"
 
 #define BCDEC_IMPLEMENTATION
+#define BCDEC_BC4BC5_PRECISE
 #include <bcdec.h>
 #include <ProcessRGB.hpp>
 
@@ -6524,10 +6525,13 @@ static void DecodeBlockSwapRB(const void* src, void* dst, int pitch)
     }
 }
 
+// bcdec's isSigned decode path is only exercised here for BC4/BC5 UNORM sources: no
+// signed EAC target format exists, so SNORM sources still go through the biased
+// unsigned reinterpretation noted where this is selected in GetBCnFallback.
 static void DecodeBC4BlockForEac(const void* src, void* dst, int pitch)
 {
     uint8_t block[4][4];
-    bcdec_bc4(src, block, 4);
+    bcdec_bc4(src, block, 4, /*isSigned=*/0);
 
     for (size_t y = 0; y < 4; y++)
     {
@@ -6545,7 +6549,7 @@ static void DecodeBC4BlockForEac(const void* src, void* dst, int pitch)
 static void DecodeBC5BlockForEac(const void* src, void* dst, int pitch)
 {
     uint8_t block[4][8];
-    bcdec_bc5(src, block, 8);
+    bcdec_bc5(src, block, 8, /*isSigned=*/0);
 
     for (size_t y = 0; y < 4; y++)
     {
@@ -6559,6 +6563,14 @@ static void DecodeBC5BlockForEac(const void* src, void* dst, int pitch)
         }
     }
 }
+
+// Plain decode targets (Decode fallback mode only) preserve BC4/BC5 signedness: SNORM
+// sources decode through bcdec's signed path and land in an R8(G8)_SNORM texture, so
+// normal maps keep their original signed range instead of being reinterpreted as UNORM.
+static void DecodeBC4Unorm(const void* src, void* dst, int pitch) { bcdec_bc4(src, dst, pitch, /*isSigned=*/0); }
+static void DecodeBC4Snorm(const void* src, void* dst, int pitch) { bcdec_bc4(src, dst, pitch, /*isSigned=*/1); }
+static void DecodeBC5Unorm(const void* src, void* dst, int pitch) { bcdec_bc5(src, dst, pitch, /*isSigned=*/0); }
+static void DecodeBC5Snorm(const void* src, void* dst, int pitch) { bcdec_bc5(src, dst, pitch, /*isSigned=*/1); }
 
 // DXT1 stores punch-through alpha in blocks where color0 <= color1 and an index equals 3.
 // Scanning the raw blocks decides between ETC2 RGB (opaque, same size as BC1) and ETC2
@@ -6591,7 +6603,12 @@ static bool GetBCnFallback(RenderFormat format, const uint8_t* data, size_t data
     {
     case RenderFormat::BC4_SNORM:
     case RenderFormat::BC5_SNORM:
-        LOG_WARNING("Converting SNORM BC texture as UNORM; values will be biased.");
+        if (etc2)
+        {
+            // No signed EAC target format exists, so the transcode path still has to
+            // reinterpret signed data as unsigned.
+            LOG_WARNING("Converting SNORM BC texture as UNORM for ETC2/EAC transcode; values will be biased.");
+        }
         break;
     case RenderFormat::BC1_UNORM_SRGB:
     case RenderFormat::BC2_UNORM_SRGB:
@@ -6683,10 +6700,11 @@ static bool GetBCnFallback(RenderFormat format, const uint8_t* data, size_t data
         }
         else
         {
+            const bool snorm = format == RenderFormat::BC4_SNORM;
             fallback.mode = BCnFallbackMode::Decode;
-            fallback.targetFormat = RenderFormat::R8_UNORM;
+            fallback.targetFormat = snorm ? RenderFormat::R8_SNORM : RenderFormat::R8_UNORM;
             fallback.bytesPerPixel = 1;
-            fallback.decodeBlock = &bcdec_bc4;
+            fallback.decodeBlock = snorm ? &DecodeBC4Snorm : &DecodeBC4Unorm;
         }
         return true;
     case RenderFormat::BC5_TYPELESS:
@@ -6703,10 +6721,11 @@ static bool GetBCnFallback(RenderFormat format, const uint8_t* data, size_t data
         }
         else
         {
+            const bool snorm = format == RenderFormat::BC5_SNORM;
             fallback.mode = BCnFallbackMode::Decode;
-            fallback.targetFormat = RenderFormat::R8G8_UNORM;
+            fallback.targetFormat = snorm ? RenderFormat::R8G8_SNORM : RenderFormat::R8G8_UNORM;
             fallback.bytesPerPixel = 2;
-            fallback.decodeBlock = &bcdec_bc5;
+            fallback.decodeBlock = snorm ? &DecodeBC5Snorm : &DecodeBC5Unorm;
         }
         return true;
     default:
