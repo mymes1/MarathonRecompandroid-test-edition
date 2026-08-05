@@ -3314,17 +3314,22 @@ namespace plume {
             imageCopy.bufferOffset = srcLocation.placedFootprint.offset;
             const uint32_t bufferRowLength =
                 ((srcLocation.placedFootprint.rowWidth + blockWidth - 1) / blockWidth) * blockWidth;
+            const uint32_t tightRowLength =
+                ((srcLocation.placedFootprint.width + blockWidth - 1) / blockWidth) * blockWidth;
             const uint32_t bufferImageHeight =
                 ((srcLocation.placedFootprint.height + blockHeight - 1) / blockHeight) * blockHeight;
-            // Zero is Vulkan's explicit tightly-packed form.  Besides being
-            // equivalent for tight rows, it avoids a Mali-G57 driver bug that
-            // can mis-stride buffer-to-image copies when a redundant row
-            // length is supplied.  Keep the explicit values for padded rows
-            // and block-compressed footprints where they carry information.
-            imageCopy.bufferRowLength =
-                bufferRowLength == srcLocation.placedFootprint.width ? 0 : bufferRowLength;
-            imageCopy.bufferImageHeight =
-                bufferImageHeight == srcLocation.placedFootprint.height ? 0 : bufferImageHeight;
+            const uint32_t tightImageHeight =
+                ((srcLocation.placedFootprint.height + blockHeight - 1) / blockHeight) * blockHeight;
+            // Zero is Vulkan's explicit tightly-packed form.  Compare
+            // compressed footprints using block-rounded dimensions: a 2x2 BC
+            // mip is stored as one 4x4 block, so comparing the raw 2-pixel
+            // extent would incorrectly mark a tight upload as padded.  Mali-G57
+            // Android drivers are particularly sensitive to redundant
+            // row/image lengths and can otherwise advance through every row at
+            // the wrong stride, producing the horizontal texture smearing seen
+            // on Galaxy Tab A9.
+            imageCopy.bufferRowLength = bufferRowLength == tightRowLength ? 0 : bufferRowLength;
+            imageCopy.bufferImageHeight = bufferImageHeight == tightImageHeight ? 0 : bufferImageHeight;
             imageCopy.imageSubresource.aspectMask = toAspectFlags(dstTexture->desc.format, dstTexture->desc.flags);
             imageCopy.imageSubresource.baseArrayLayer = dstLocation.subresource.arrayIndex;
             imageCopy.imageSubresource.layerCount = 1;
