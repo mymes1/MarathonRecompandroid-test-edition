@@ -44,7 +44,9 @@ description: Root causes and fixes for SIGSEGV in libGLES_mali and vkGetBufferDe
 **Fix (in `thirdparty/plume/plume_vulkan.cpp`):**
 1. **Always** append `VkPhysicalDeviceBufferDeviceAddressFeatures` to the `vkGetPhysicalDeviceFeatures2` query chain — drivers silently ignore unknown pNext structs, so this is safe on all devices.
 2. Enable the KHR feature path on pre-1.2 devices.
-3. In `VulkanBuffer::getDeviceAddress`, use `vkGetBufferDeviceAddressKHR` when the Vulkan 1.2 core pointer is unavailable; fail explicitly rather than calling a null pointer if neither is resolved.
+3. Call `volkLoadDevice` immediately after `vkCreateDevice`; Volk does not load device-level commands just by loading the instance.
+4. In `VulkanBuffer::getDeviceAddress`, use `vkGetBufferDeviceAddressKHR` when the Vulkan 1.2 core pointer is unavailable; fail explicitly rather than calling a null pointer if neither is resolved.
+5. Never force-enable an extension absent from the driver's advertised extension list; resolve the valid core/KHR entry point after device creation instead.
 
 **Why:** Volk loads core and KHR command names into separate pointers without automatically aliasing the KHR name to the core one. Supporting both names is required for drivers that expose the original extension API instead of Vulkan 1.2's promoted API.
 
