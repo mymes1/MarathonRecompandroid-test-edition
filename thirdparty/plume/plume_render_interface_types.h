@@ -1843,6 +1843,13 @@ namespace plume {
 
         // Query Pools.
         bool queryPools = false;
+
+        // Conditional survey (per-draw-call storage-buffer feedback).
+        // Disabled on Mali: the storage-buffer descriptor set in the main
+        // pipeline layout triggers a shader compiler SIGSEGV (libGLES_mali)
+        // when mixed with UPDATE_AFTER_BIND variable-count bindless sets on
+        // Mali-G57 and similar system Vulkan drivers (SM-X110, Android 15+).
+        bool conditionalSurvey = true;
     };
 
     struct RenderInterfaceCapabilities {

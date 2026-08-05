@@ -1592,6 +1592,9 @@ static constexpr size_t SAMPLER_DESCRIPTOR_SIZE = 1024;
 // recent Mali report far more than the defaults; PowerVR is the family that can go lower.
 static uint32_t g_textureDescriptorSize = TEXTURE_DESCRIPTOR_SIZE;
 static uint32_t g_samplerDescriptorSize = SAMPLER_DESCRIPTOR_SIZE;
+// Set to true inside CreateHostDevice when a Mali GPU is detected.
+// Used to skip pipeline-creation paths that crash libGLES_mali on Android.
+static bool g_isMali = false;
 
 #if defined(__ANDROID__)
 // Mali-based devices advertise descriptor-indexing limits large enough for the desktop
@@ -1952,14 +1955,18 @@ static void BeginCommandList()
     auto& commandList = g_commandLists[g_frame];
 
     commandList->begin();
-    commandList->resetQueryPool(g_queryPools[g_frame].get(), 0, NUM_QUERIES);
-    commandList->writeTimestamp(g_queryPools[g_frame].get(), 0);
+    if (g_capabilities.queryPools)
+    {
+        commandList->resetQueryPool(g_queryPools[g_frame].get(), 0, NUM_QUERIES);
+        commandList->writeTimestamp(g_queryPools[g_frame].get(), 0);
+    }
     commandList->setGraphicsPipelineLayout(g_pipelineLayout.get());
     commandList->setGraphicsDescriptorSet(g_textureDescriptorSet.get(), 0);
     commandList->setGraphicsDescriptorSet(g_textureDescriptorSet.get(), 1);
     commandList->setGraphicsDescriptorSet(g_textureDescriptorSet.get(), 2);
     commandList->setGraphicsDescriptorSet(g_samplerDescriptorSet.get(), 3);
-    commandList->setGraphicsDescriptorSet(g_conditionalSurveyDescriptorSet.get(), 4);
+    if (g_capabilities.conditionalSurvey)
+        commandList->setGraphicsDescriptorSet(g_conditionalSurveyDescriptorSet.get(), 4);
 
     g_readyForCommands = true;
     g_readyForCommands.notify_one();
@@ -2226,6 +2233,8 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
 
         if (isMali)
         {
+            g_isMali = true;
+
             g_textureDescriptorSize = uint32_t(std::min<size_t>(g_textureDescriptorSize, MALI_TEXTURE_DESCRIPTOR_SIZE));
             LOGF_WARNING("Mali compatibility path: limiting bindless texture descriptors to {} to prevent libGLES_mali shader compiler crash.", g_textureDescriptorSize);
 
@@ -2238,6 +2247,18 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
             g_capabilities.resolveModes = false;
             g_capabilities.resolveRegion = false;
             g_capabilities.dynamicDepthBias = false;
+
+            // The conditional survey adds a storage-buffer descriptor set to the
+            // main pipeline layout alongside UPDATE_AFTER_BIND variable-count
+            // bindless sets.  This mixed layout triggers a SIGSEGV in the Mali-G57
+            // (and related) shader compiler (libGLES_mali) on Android 15+.
+            g_capabilities.conditionalSurvey = false;
+
+            // Timestamp query pools are unreliable on Mali system Vulkan drivers
+            // (the queue may report timestampValidBits == 0).  Disable them to
+            // avoid undefined behaviour during resetQueryPool / writeTimestamp.
+            g_capabilities.queryPools = false;
+
             LOG("Mali compatibility path: conservative Vulkan capabilities enabled.");
         }
     }
@@ -2308,8 +2329,11 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     for (auto& commandFence : g_commandFences)
         commandFence = g_device->createCommandFence();
 
-    for (auto& queryPool : g_queryPools)
-        queryPool = g_device->createQueryPool(NUM_QUERIES);
+    if (g_capabilities.queryPools)
+    {
+        for (auto& queryPool : g_queryPools)
+            queryPool = g_device->createQueryPool(NUM_QUERIES);
+    }
 
     g_copyQueue = g_device->createCommandQueue(RenderCommandListType::COPY);
     g_copyCommandList = g_copyQueue->createCommandList();
@@ -2449,22 +2473,29 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
 
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
 
-    RenderBufferDesc conditionalSurveyBufferDesc;
-    conditionalSurveyBufferDesc.size = CONDITIONAL_SURVEY_MAX * sizeof(uint32_t);
-    conditionalSurveyBufferDesc.heapType = RenderHeapType::DEFAULT;
-    conditionalSurveyBufferDesc.flags = RenderBufferFlag::STORAGE | RenderBufferFlag::UNORDERED_ACCESS;
-    g_conditionalSurveyBuffer = g_device->createBuffer(conditionalSurveyBufferDesc);
-
+    // On Mali the conditional survey is disabled: adding a storage-buffer
+    // descriptor set to the pipeline layout alongside the variable-count
+    // bindless texture/sampler sets triggers a shader compiler crash
+    // (libGLES_mali SIGSEGV) on Mali-G57 and similar Android 15+ drivers.
     RenderDescriptorSetBuilder conditionalSurveyDescriptorSetBuilder;
-    conditionalSurveyDescriptorSetBuilder.begin();
-    conditionalSurveyDescriptorSetBuilder.addReadWriteStructuredBuffer(0);
-    conditionalSurveyDescriptorSetBuilder.end();
-    g_conditionalSurveyDescriptorSet = conditionalSurveyDescriptorSetBuilder.create(g_device.get());
+    if (g_capabilities.conditionalSurvey)
+    {
+        RenderBufferDesc conditionalSurveyBufferDesc;
+        conditionalSurveyBufferDesc.size = CONDITIONAL_SURVEY_MAX * sizeof(uint32_t);
+        conditionalSurveyBufferDesc.heapType = RenderHeapType::DEFAULT;
+        conditionalSurveyBufferDesc.flags = RenderBufferFlag::STORAGE | RenderBufferFlag::UNORDERED_ACCESS;
+        g_conditionalSurveyBuffer = g_device->createBuffer(conditionalSurveyBufferDesc);
 
-    RenderBufferStructuredView conditionalSurveyStructuredView(sizeof(uint32_t));
-    g_conditionalSurveyDescriptorSet->setBuffer(0, g_conditionalSurveyBuffer.get(), 0, &conditionalSurveyStructuredView);
+        conditionalSurveyDescriptorSetBuilder.begin();
+        conditionalSurveyDescriptorSetBuilder.addReadWriteStructuredBuffer(0);
+        conditionalSurveyDescriptorSetBuilder.end();
+        g_conditionalSurveyDescriptorSet = conditionalSurveyDescriptorSetBuilder.create(g_device.get());
 
-    pipelineLayoutBuilder.addDescriptorSet(conditionalSurveyDescriptorSetBuilder);
+        RenderBufferStructuredView conditionalSurveyStructuredView(sizeof(uint32_t));
+        g_conditionalSurveyDescriptorSet->setBuffer(0, g_conditionalSurveyBuffer.get(), 0, &conditionalSurveyStructuredView);
+
+        pipelineLayoutBuilder.addDescriptorSet(conditionalSurveyDescriptorSetBuilder);
+    }
 
     if (g_backend != Backend::D3D12)
     {
@@ -2499,31 +2530,37 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     g_resolveMsaaColorShaders[1] = CREATE_SHADER(resolve_msaa_color_4x);
     g_resolveMsaaColorShaders[2] = CREATE_SHADER(resolve_msaa_color_8x);
 
-    for (size_t i = 0; i < std::size(g_resolveMsaaDepthPipelines); i++)
+    // Mali-G57 (SM-X110 and variants) forces MSAA off via ApplyLowEndDefaults
+    // and its shader compiler crashes on multisampled-depth resolve shaders.
+    // Skip creating these pipelines entirely on Mali; they will never be used.
+    if (!g_isMali)
     {
-        std::unique_ptr<RenderShader> pixelShader;
-        switch (i)
+        for (size_t i = 0; i < std::size(g_resolveMsaaDepthPipelines); i++)
         {
-        case 0:
-            pixelShader = CREATE_SHADER(resolve_msaa_depth_2x);
-            break;
-        case 1:
-            pixelShader = CREATE_SHADER(resolve_msaa_depth_4x);
-            break;
-        case 2:
-            pixelShader = CREATE_SHADER(resolve_msaa_depth_8x);
-            break;
-        }
+            std::unique_ptr<RenderShader> pixelShader;
+            switch (i)
+            {
+            case 0:
+                pixelShader = CREATE_SHADER(resolve_msaa_depth_2x);
+                break;
+            case 1:
+                pixelShader = CREATE_SHADER(resolve_msaa_depth_4x);
+                break;
+            case 2:
+                pixelShader = CREATE_SHADER(resolve_msaa_depth_8x);
+                break;
+            }
 
-        desc = {};
-        desc.pipelineLayout = g_pipelineLayout.get();
-        desc.vertexShader = g_copyShader.get();
-        desc.pixelShader = pixelShader.get();
-        desc.depthFunction = RenderComparisonFunction::ALWAYS;
-        desc.depthEnabled = true;
-        desc.depthWriteEnabled = true;
-        desc.depthTargetFormat = RenderFormat::D32_FLOAT_S8_UINT;
-        g_resolveMsaaDepthPipelines[i] = g_device->createGraphicsPipeline(desc);
+            desc = {};
+            desc.pipelineLayout = g_pipelineLayout.get();
+            desc.vertexShader = g_copyShader.get();
+            desc.pixelShader = pixelShader.get();
+            desc.depthFunction = RenderComparisonFunction::ALWAYS;
+            desc.depthEnabled = true;
+            desc.depthWriteEnabled = true;
+            desc.depthTargetFormat = RenderFormat::D32_FLOAT_S8_UINT;
+            g_resolveMsaaDepthPipelines[i] = g_device->createGraphicsPipeline(desc);
+        }
     }
 
     for (auto& shader : g_gaussianBlurShaders)
@@ -3498,9 +3535,12 @@ void Video::Present()
         g_commandListStates[g_frame] = false;
 
         // Update the GPU profiler with the results from the timestamps of the frame.
-        g_queryPools[g_frame]->queryResults();
-        const uint64_t *frameTimestamps = g_queryPools[g_frame]->getResults();
-        g_gpuFrameProfiler.Set(double(frameTimestamps[1] - frameTimestamps[0]) / 1000000.0);
+        if (g_capabilities.queryPools)
+        {
+            g_queryPools[g_frame]->queryResults();
+            const uint64_t *frameTimestamps = g_queryPools[g_frame]->getResults();
+            g_gpuFrameProfiler.Set(double(frameTimestamps[1] - frameTimestamps[0]) / 1000000.0);
+        }
     }
 
     g_dirtyStates = DirtyStates(true);
@@ -3620,7 +3660,8 @@ static void ProcExecuteCommandList(const RenderCommand& cmd)
     }
 
     auto &commandList = g_commandLists[g_frame];
-    commandList->writeTimestamp(g_queryPools[g_frame].get(), 1);
+    if (g_capabilities.queryPools)
+        commandList->writeTimestamp(g_queryPools[g_frame].get(), 1);
     commandList->end();
 
     if (g_swapChainValid)
@@ -4202,12 +4243,20 @@ static void ExecutePendingStretchRectCommands(GuestSurface* renderTarget, GuestS
 
                         if (isDepthStencil)
                         {
-                            pipeline = g_resolveMsaaDepthPipelines[pipelineIndex].get();
+                            // g_resolveMsaaDepthPipelines is not created on Mali
+                            // (MSAA is disabled there), so fall back to the plain
+                            // copy pipeline if it is null.
+                            pipeline = g_resolveMsaaDepthPipelines[pipelineIndex]
+                                           ? g_resolveMsaaDepthPipelines[pipelineIndex].get()
+                                           : g_copyDepthPipeline.get();
                         }
                         else
                         {
                             auto& resolveMsaaColorPipeline = g_resolveMsaaColorPipelines[surface->format][pipelineIndex];
-                            if (resolveMsaaColorPipeline == nullptr)
+                            // Skip lazy pipeline creation on Mali: MSAA is disabled
+                            // there, so this path should not be reached; creating
+                            // MSAA resolve shaders on Mali crashes libGLES_mali.
+                            if (resolveMsaaColorPipeline == nullptr && !g_isMali)
                             {
                                 RenderGraphicsPipelineDesc desc;
                                 desc.pipelineLayout = g_pipelineLayout.get();
@@ -6063,6 +6112,10 @@ static void EndConditionalSurvey(GuestDevice* device)
 
 static void ProcSetConditionalSurvey(const RenderCommand& cmd)
 {
+    // Conditional survey is disabled on Mali (buffer/descriptor not created).
+    if (!g_capabilities.conditionalSurvey)
+        return;
+
     if (cmd.setConditionalSurvey.enabled)
     {
         // Clear previous survey result first.

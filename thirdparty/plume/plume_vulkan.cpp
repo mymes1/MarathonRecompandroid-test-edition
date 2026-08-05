@@ -3940,7 +3940,18 @@ namespace plume {
         }
 
         VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures = {};
-        const bool bufferDeviceAddressFound = supportedOptionalExtensions.find(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) != supportedOptionalExtensions.end();
+        // VK_KHR_buffer_device_address was promoted to Vulkan 1.2 core. Some Android
+        // GPU drivers (observed on Mali-G57 / Android 15) omit the extension name from
+        // vkEnumerateDeviceExtensionProperties once the device reports apiVersion >= 1.2,
+        // even though the feature is still queryable/usable via the core feature struct.
+        // If we only look at the extension name here, bufferDeviceAddressFeatures never
+        // gets queried, capabilities.bufferDeviceAddress ends up false, and vkGetDeviceProcAddr
+        // never resolves vkGetBufferDeviceAddress -- so any call into it (used throughout the
+        // renderer for bindless vertex/index/constant buffer references) crashes with SIGSEGV
+        // at pc=0x0. Query the feature whenever either the extension is listed or the physical
+        // device is 1.2+; this only widens detection and cannot regress devices that already work.
+        const bool bufferDeviceAddressFound = (supportedOptionalExtensions.find(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) != supportedOptionalExtensions.end()) ||
+            (physicalDeviceProperties.apiVersion >= VK_API_VERSION_1_2);
         if (bufferDeviceAddressFound) {
             bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
             bufferDeviceAddressFeatures.pNext = featuresChain;
@@ -4044,6 +4055,13 @@ namespace plume {
         if (bufferDeviceAddressSupported) {
             bufferDeviceAddressFeatures.pNext = createDeviceChain;
             createDeviceChain = &bufferDeviceAddressFeatures;
+        }
+        else {
+            // The renderer relies on vkGetBufferDeviceAddress for bindless vertex/index/constant
+            // buffer references on every non-D3D12 backend; without it, calls into the (unresolved,
+            // null) function pointer will crash with SIGSEGV the first time a buffer is uploaded.
+            fprintf(stderr, "[plume] Warning: VK_KHR_buffer_device_address / core 1.2 bufferDeviceAddress feature "
+                "is not supported by this physical device. Rendering will likely crash.\n");
         }
         
         if (portabilityFound) {
