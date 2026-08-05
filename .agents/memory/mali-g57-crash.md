@@ -39,13 +39,14 @@ description: Root causes and fixes for SIGSEGV in libGLES_mali and vkGetBufferDe
 
 **Pattern:** SIGSEGV at `pc=0x0`, `lr` resolving to `plume::VulkanBuffer::getDeviceAddress()` at `plume_vulkan.cpp:955`. Crash on a background thread during archive loading at ~2.4 s.
 
-**Root cause:** MT8781/Mali-G57 on Android 15 reports **Vulkan 1.1** (not 1.2) AND does **not** advertise `VK_KHR_buffer_device_address` in its extension list. The previous detection guard (`bufferDeviceAddressFound = extension_listed || apiVersion >= 1.2`) stayed `false` for this device, so `vkGetBufferDeviceAddress` was never resolved via `vkGetDeviceProcAddr` — leaving the function pointer null. Every upload buffer creation calls `buffer->getDeviceAddress()`, which then crashes at pc=0x0.
+**Root cause:** MT8781/Mali-G57 on Android 15 exposes buffer-device addressing through the Vulkan 1.1 KHR path. The renderer requested the feature but called only the Vulkan 1.2 core function name, `vkGetBufferDeviceAddress`; that pointer is null on this driver. Every upload buffer creation calls `buffer->getDeviceAddress()`, which then crashes at pc=0x0.
 
 **Fix (in `thirdparty/plume/plume_vulkan.cpp`):**
 1. **Always** append `VkPhysicalDeviceBufferDeviceAddressFeatures` to the `vkGetPhysicalDeviceFeatures2` query chain — drivers silently ignore unknown pNext structs, so this is safe on all devices.
-2. If `bufferDeviceAddressFeatures.bufferDeviceAddress == VK_TRUE` AND device is pre-1.2 AND extension not already in `supportedOptionalExtensions`: force-insert `VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME` into `supportedOptionalExtensions` so it lands in `enabledExtensions` at device creation and `volkLoadDevice` resolves the entry point.
+2. Enable the KHR feature path on pre-1.2 devices.
+3. In `VulkanBuffer::getDeviceAddress`, use `vkGetBufferDeviceAddressKHR` when the Vulkan 1.2 core pointer is unavailable; fail explicitly rather than calling a null pointer if neither is resolved.
 
-**Why:** Mali-G57 (MT8781) does support BDA at the hardware level (feature query returns VK_TRUE when properly queried), but its driver omits the extension name from `vkEnumerateDeviceExtensionProperties` even on the advertised API version. Force-querying and force-inserting the extension unblocks `volkLoadDevice` without breaking other devices.
+**Why:** Volk loads core and KHR command names into separate pointers without automatically aliasing the KHR name to the core one. Supporting both names is required for drivers that expose the original extension API instead of Vulkan 1.2's promoted API.
 
 ---
 

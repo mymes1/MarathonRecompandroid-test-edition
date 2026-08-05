@@ -952,7 +952,24 @@ namespace plume {
         info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
         info.pNext = nullptr;
         info.buffer = vk;
-        return vkGetBufferDeviceAddress(device->vk, &info);
+
+        // vkGetBufferDeviceAddress is the Vulkan 1.2 core entry point. Android
+        // Vulkan 1.1 drivers expose the identical KHR entry point under its
+        // original name instead. Volk loads both pointers independently and
+        // does not alias the KHR pointer to the core one. In particular, the
+        // Mali-G57 driver on the Galaxy Tab A9 exposes only the KHR name:
+        // calling the unresolved core pointer previously caused SIGSEGV at
+        // pc=0x0 while the game's upload buffers were being created.
+        if (vkGetBufferDeviceAddress != nullptr) {
+            return vkGetBufferDeviceAddress(device->vk, &info);
+        }
+
+        if (vkGetBufferDeviceAddressKHR != nullptr) {
+            return vkGetBufferDeviceAddressKHR(device->vk, &info);
+        }
+
+        fprintf(stderr, "[plume] Buffer-device-address was enabled but neither Vulkan entry point was resolved.\n");
+        return 0;
     }
 
     // VulkanBufferFormattedView

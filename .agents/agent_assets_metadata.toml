@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "BPl3W1JKL2XNAicy39SmR"
+uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
+type = "unspecified"
+title = "Galaxy Tab A9 compatibility APK"
+description = "Debug APK with the Vulkan 1.1 KHR buffer-device-address fallback for the Samsung Galaxy Tab A9 (SM-X110) on Android 15."
