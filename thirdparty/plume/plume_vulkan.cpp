@@ -3303,11 +3303,28 @@ namespace plume {
             assert(dstTexture != nullptr);
             assert(srcBuffer != nullptr);
 
-            const uint32_t blockWidth = RenderFormatBlockWidth(dstTexture->desc.format);
+            // The footprint describes the bytes in the upload buffer.  Use
+            // that format for stride calculations rather than the image
+            // format; this matters when a BC source has been CPU-decoded or
+            // transcoded to a different sampled format on mobile.
+            const RenderFormat footprintFormat = srcLocation.placedFootprint.format;
+            const uint32_t blockWidth = RenderFormatBlockWidth(footprintFormat);
+            const uint32_t blockHeight = RenderFormatBlockHeight(footprintFormat);
             VkBufferImageCopy imageCopy = {};
             imageCopy.bufferOffset = srcLocation.placedFootprint.offset;
-            imageCopy.bufferRowLength = ((srcLocation.placedFootprint.rowWidth + blockWidth - 1) / blockWidth) * blockWidth;
-            imageCopy.bufferImageHeight = ((srcLocation.placedFootprint.height + blockWidth - 1) / blockWidth) * blockWidth;
+            const uint32_t bufferRowLength =
+                ((srcLocation.placedFootprint.rowWidth + blockWidth - 1) / blockWidth) * blockWidth;
+            const uint32_t bufferImageHeight =
+                ((srcLocation.placedFootprint.height + blockHeight - 1) / blockHeight) * blockHeight;
+            // Zero is Vulkan's explicit tightly-packed form.  Besides being
+            // equivalent for tight rows, it avoids a Mali-G57 driver bug that
+            // can mis-stride buffer-to-image copies when a redundant row
+            // length is supplied.  Keep the explicit values for padded rows
+            // and block-compressed footprints where they carry information.
+            imageCopy.bufferRowLength =
+                bufferRowLength == srcLocation.placedFootprint.width ? 0 : bufferRowLength;
+            imageCopy.bufferImageHeight =
+                bufferImageHeight == srcLocation.placedFootprint.height ? 0 : bufferImageHeight;
             imageCopy.imageSubresource.aspectMask = toAspectFlags(dstTexture->desc.format, dstTexture->desc.flags);
             imageCopy.imageSubresource.baseArrayLayer = dstLocation.subresource.arrayIndex;
             imageCopy.imageSubresource.layerCount = 1;

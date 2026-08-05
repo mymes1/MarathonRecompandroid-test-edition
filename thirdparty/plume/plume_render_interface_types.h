@@ -707,6 +707,44 @@ namespace plume {
         }
     };
 
+    // Block-compressed formats use 4x4 texel blocks.  Keeping this separate
+    // from RenderFormatBlockWidth makes buffer-image footprints unambiguous
+    // for Vulkan, where bufferImageHeight is expressed in texels.
+    constexpr uint32_t RenderFormatBlockHeight(RenderFormat format) {
+        switch (format) {
+        case RenderFormat::BC1_TYPELESS:
+        case RenderFormat::BC1_UNORM:
+        case RenderFormat::BC1_UNORM_SRGB:
+        case RenderFormat::BC2_TYPELESS:
+        case RenderFormat::BC2_UNORM:
+        case RenderFormat::BC2_UNORM_SRGB:
+        case RenderFormat::BC3_TYPELESS:
+        case RenderFormat::BC3_UNORM:
+        case RenderFormat::BC3_UNORM_SRGB:
+        case RenderFormat::BC4_TYPELESS:
+        case RenderFormat::BC4_UNORM:
+        case RenderFormat::BC4_SNORM:
+        case RenderFormat::BC5_TYPELESS:
+        case RenderFormat::BC5_UNORM:
+        case RenderFormat::BC5_SNORM:
+        case RenderFormat::BC6H_TYPELESS:
+        case RenderFormat::BC6H_UF16:
+        case RenderFormat::BC6H_SF16:
+        case RenderFormat::BC7_TYPELESS:
+        case RenderFormat::BC7_UNORM:
+        case RenderFormat::BC7_UNORM_SRGB:
+        case RenderFormat::ETC2_RGB8_UNORM:
+        case RenderFormat::ETC2_RGB8_UNORM_SRGB:
+        case RenderFormat::ETC2_RGBA8_UNORM:
+        case RenderFormat::ETC2_RGBA8_UNORM_SRGB:
+        case RenderFormat::EAC_R11_UNORM:
+        case RenderFormat::EAC_R11G11_UNORM:
+            return 4;
+        default:
+            return 1;
+        }
+    };
+
     constexpr bool RenderFormatIsDepth(RenderFormat format) {
         switch (format) {
         case RenderFormat::D16_UNORM:

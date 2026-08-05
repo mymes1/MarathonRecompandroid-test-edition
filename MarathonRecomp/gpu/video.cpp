@@ -1593,9 +1593,22 @@ static constexpr size_t SAMPLER_DESCRIPTOR_SIZE = 1024;
 // recent Mali report far more than the defaults; PowerVR is the family that can go lower.
 static uint32_t g_textureDescriptorSize = TEXTURE_DESCRIPTOR_SIZE;
 static uint32_t g_samplerDescriptorSize = SAMPLER_DESCRIPTOR_SIZE;
+// Upload-buffer alignment constants.  These are the desktop-default values;
+// g_uploadPitchAlignment / g_uploadPlacementAlignment below are the runtime
+// values that may be overridden per-device.
+static constexpr uint32_t PITCH_ALIGNMENT     = 0x100;
+static constexpr uint32_t PLACEMENT_ALIGNMENT = 0x200;
+
 // Set to true inside CreateHostDevice when a Mali GPU is detected.
 // Used to skip pipeline-creation paths that crash libGLES_mali on Android.
 static bool g_isMali = false;
+// Upload-buffer row-pitch and slice-placement alignment used for all texture
+// uploads.  On Mali, bufferRowLength != imageExtent.width in VkBufferImageCopy
+// causes the driver to mis-stride every texture (rows appear "extended or
+// morphed"), so we force tight packing (alignment = 1) and only require the
+// minimum Vulkan-spec bufferOffset alignment (4 bytes) for slice placement.
+static uint32_t g_uploadPitchAlignment     = PITCH_ALIGNMENT;
+static uint32_t g_uploadPlacementAlignment = PLACEMENT_ALIGNMENT;
 
 #if defined(__ANDROID__)
 // Mali-based devices advertise descriptor-indexing limits large enough for the desktop
@@ -1633,9 +1646,6 @@ static void ExecuteCopyCommandList(const T& function)
     g_copyQueue->executeCommandLists(g_copyCommandList.get(), g_copyCommandFence.get());
     g_copyQueue->waitForCommandFence(g_copyCommandFence.get());
 }
-
-static constexpr uint32_t PITCH_ALIGNMENT = 0x100;
-static constexpr uint32_t PLACEMENT_ALIGNMENT = 0x200;
 
 struct ImGuiPushConstants
 {
@@ -1707,8 +1717,8 @@ static void CreateImGuiBackend()
     g_imFontTexture->textureHolder = g_device->createTexture(textureDesc);
     g_imFontTexture->texture = g_imFontTexture->textureHolder.get();
 
-    uint32_t rowPitch = (width * 4 + PITCH_ALIGNMENT - 1) & ~(PITCH_ALIGNMENT - 1);
-    uint32_t slicePitch = (rowPitch * height + PLACEMENT_ALIGNMENT - 1) & ~(PLACEMENT_ALIGNMENT - 1);
+    uint32_t rowPitch = (width * 4 + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
+    uint32_t slicePitch = (rowPitch * height + g_uploadPlacementAlignment - 1) & ~(g_uploadPlacementAlignment - 1);
     auto uploadBuffer = g_device->createBuffer(RenderBufferDesc::UploadBuffer(slicePitch));
     uint8_t* mappedMemory = reinterpret_cast<uint8_t*>(uploadBuffer->map());
 
@@ -2261,6 +2271,15 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
             g_capabilities.queryPools = false;
 
             LOG("Mali compatibility path: conservative Vulkan capabilities enabled.");
+
+            // Mali system Vulkan drivers (libGLES_mali) mis-stride every
+            // buffer-to-image copy when bufferRowLength != imageExtent.width,
+            // producing textures that look "extended or morphed."  Force tight
+            // (unpadded) row packing so bufferRowLength always equals the image
+            // width, and only require the 4-byte minimum slice offset alignment.
+            g_uploadPitchAlignment     = 1;
+            g_uploadPlacementAlignment = 4;
+            LOG("Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.");
         }
     }
 
@@ -2733,7 +2752,7 @@ static void ProcDestructResource(const RenderCommand& cmd)
 
 static uint32_t ComputeTexturePitch(GuestTexture* texture)
 {
-    return (texture->width * RenderFormatSize(texture->format) + PITCH_ALIGNMENT - 1) & ~(PITCH_ALIGNMENT - 1);
+    return (texture->width * RenderFormatSize(texture->format) + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
 }
 
 static void LockTextureRect(GuestTexture* texture, uint32_t, GuestLockedRect* lockedRect) 
@@ -2768,7 +2787,7 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
     uint32_t pitch = ComputeTexturePitch(args.texture);
     uint32_t slicePitch = pitch * args.texture->height;
 
-    auto allocation = g_uploadAllocators[g_frame].allocate(slicePitch, PLACEMENT_ALIGNMENT);
+    auto allocation = g_uploadAllocators[g_frame].allocate(slicePitch, g_uploadPlacementAlignment);
     memcpy(allocation.memory, args.texture->mappedMemory, slicePitch);
 
     g_commandLists[g_frame]->copyTextureRegion(
@@ -6822,23 +6841,23 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                 if (bcFallback.mode == BCnFallbackMode::Decode)
                 {
                     // The upload buffer holds decoded pixels instead of the source BC blocks.
-                    slice.dstRowPitch = (slice.width * bcFallback.bytesPerPixel + PITCH_ALIGNMENT - 1) & ~(PITCH_ALIGNMENT - 1);
+                    slice.dstRowPitch = (slice.width * bcFallback.bytesPerPixel + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
                     slice.dstRowCount = slice.height;
                 }
                 else if (bcFallback.mode == BCnFallbackMode::Transcode)
                 {
                     // The upload buffer holds ETC2/EAC blocks with the same 4x4 geometry.
-                    slice.dstRowPitch = (((slice.width + 3) / 4) * bcFallback.targetBlockSize + PITCH_ALIGNMENT - 1) & ~(PITCH_ALIGNMENT - 1);
+                    slice.dstRowPitch = (((slice.width + 3) / 4) * bcFallback.targetBlockSize + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
                     slice.dstRowCount = slice.rowCount;
                 }
                 else
                 {
-                    slice.dstRowPitch = (slice.srcRowPitch + PITCH_ALIGNMENT - 1) & ~(PITCH_ALIGNMENT - 1);
+                    slice.dstRowPitch = (slice.srcRowPitch + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
                     slice.dstRowCount = slice.rowCount;
                 }
 
                 curSrcOffset += slice.srcRowPitch * slice.rowCount * slice.depth;
-                curDstOffset += (slice.dstRowPitch * slice.dstRowCount * slice.depth + PLACEMENT_ALIGNMENT - 1) & ~(PLACEMENT_ALIGNMENT - 1);
+                curDstOffset += (slice.dstRowPitch * slice.dstRowCount * slice.depth + g_uploadPlacementAlignment - 1) & ~(g_uploadPlacementAlignment - 1);
             }
         }
 
@@ -6928,7 +6947,19 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                     else if (bcFallback.mode == BCnFallbackMode::Transcode)
                         footprintRowWidth = slice.dstRowPitch / bcFallback.targetBlockSize * 4;
                     else
-                        footprintRowWidth = (slice.dstRowPitch * 8) / ddsDesc.bitsPerPixelOrBlock * ddsDesc.blockWidth;
+                    {
+                        // VkBufferImageCopy::bufferRowLength is expressed in
+                        // texels, not bytes or bits.  For block-compressed
+                        // images, derive the logical row width from the
+                        // destination format's bytes per block.  The old
+                        // bits-per-pixel calculation multiplied the row by
+                        // an extra factor (for example, a 256-byte BC row
+                        // became a 1024-texel row), so the driver advanced
+                        // by the wrong amount after every row.
+                        const uint32_t destinationBlockSize = RenderFormatSize(desc.format);
+                        const uint32_t destinationBlockWidth = RenderFormatBlockWidth(desc.format);
+                        footprintRowWidth = (slice.dstRowPitch / destinationBlockSize) * destinationBlockWidth;
+                    }
 
                     g_copyCommandList->copyTextureRegion(
                         RenderTextureCopyLocation::Subresource(texture.texture, i % desc.mipLevels, i / desc.mipLevels),
@@ -6953,7 +6984,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
             texture.descriptorIndex = g_textureDescriptorAllocator.allocate();
             g_textureDescriptorSet->setTexture(texture.descriptorIndex, texture.texture, RenderTextureLayout::SHADER_READ);
 
-            uint32_t rowPitch = (width * 4 + PITCH_ALIGNMENT - 1) & ~(PITCH_ALIGNMENT - 1);
+            uint32_t rowPitch = (width * 4 + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
             uint32_t slicePitch = rowPitch * height;
 
             auto uploadBuffer = g_device->createBuffer(RenderBufferDesc::UploadBuffer(slicePitch));
