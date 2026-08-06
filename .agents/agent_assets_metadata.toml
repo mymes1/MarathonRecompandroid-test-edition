@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recompiled full-stride geometry APK"
-description = "arm64-v8a debug APK preserving full 32-bit Vulkan vertex-stream strides to address title-screen and gameplay morphing/stretching on Mali-G57."
+title = "Marathon Recompiled — SM-X110 graphics fix"
+description = "Fresh Android APK with the Mali-G57 vertex-stride, Vulkan upload-flush, system-driver, texture-upload, and shader-pipeline compatibility fixes."
