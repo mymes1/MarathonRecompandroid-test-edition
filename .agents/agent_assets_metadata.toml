@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recompiled — SM-X110 texture fix APK"
-description = "Debug arm64-v8a APK rebuilt with the Mali-G57 Android 15 buffer-to-image texture stride fix. Install on the Samsung Galaxy Tab A9 Wi-Fi (SM-X110)."
+title = "Marathon Recompiled Mali fix APK"
+description = "Debug APK rebuilt for Samsung SM-X110/Mali-G57 testing. Includes corrected vertex-buffer usage and shader device-address buffer usage."

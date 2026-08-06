@@ -3918,7 +3918,11 @@ static RenderHeapType GetBufferHeapType()
 static GuestBuffer* CreateVertexBuffer(uint32_t length) 
 {
     auto buffer = g_userHeap.AllocPhysical<GuestBuffer>(ResourceType::VertexBuffer);
-    buffer->buffer = g_device->createBuffer(RenderBufferDesc::VertexBuffer(length, GetBufferHeapType(), RenderBufferFlag::INDEX));
+    // This buffer is bound through vkCmdBindVertexBuffers.  Passing INDEX here
+    // omitted VK_BUFFER_USAGE_VERTEX_BUFFER_BIT on Vulkan, which is undefined
+    // when the buffer is later used for world geometry and can present as
+    // missing or smeared vertices on strict mobile drivers.
+    buffer->buffer = g_device->createBuffer(RenderBufferDesc::VertexBuffer(length, GetBufferHeapType()));
     buffer->dataSize = length;
 #ifdef _DEBUG 
     buffer->buffer->setName(fmt::format("Vertex Buffer {:X}", g_memory.MapVirtual(buffer)));
