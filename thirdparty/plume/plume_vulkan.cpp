@@ -884,6 +884,13 @@ namespace plume {
         const uint32_t deviceAddressMask = RenderBufferFlag::DEVICE_ADDRESSABLE | RenderBufferFlag::CONSTANT | RenderBufferFlag::ACCELERATION_STRUCTURE | RenderBufferFlag::ACCELERATION_STRUCTURE_SCRATCH | RenderBufferFlag::ACCELERATION_STRUCTURE_INPUT | RenderBufferFlag::SHADER_BINDING_TABLE;
         const bool useDeviceAddress = device->capabilities.bufferDeviceAddress && (desc.flags & deviceAddressMask);
         bufferInfo.usage |= useDeviceAddress ? VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT : 0;
+        // RawBufferLoad() is used by the renderer for the constant/upload
+        // buffers whose addresses are passed through push constants.  Mali
+        // accepts the address query with SHADER_DEVICE_ADDRESS_BIT, but its
+        // shader compiler treats the pointed-to resource as a storage buffer.
+        // Declare both usages so the buffer contract matches the shader path
+        // instead of relying on desktop-driver tolerance.
+        bufferInfo.usage |= useDeviceAddress ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT : 0;
         
         VmaAllocationCreateInfo createInfo = {};
         /* TODO: Debug pools.
