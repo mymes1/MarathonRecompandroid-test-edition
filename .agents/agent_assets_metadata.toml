@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recompiled Mali upload-flush APK"
-description = "arm64-v8a debug APK rebuilt with explicit Vulkan mapped-memory flushing for Mali-G57 Android 15 upload buffers."
+title = "Marathon Recompiled full-stride geometry APK"
+description = "arm64-v8a debug APK preserving full 32-bit Vulkan vertex-stream strides to address title-screen and gameplay morphing/stretching on Mali-G57."

@@ -200,7 +200,11 @@ struct PipelineState
     RenderBlendOperation blendOpAlpha = RenderBlendOperation::ADD;
     uint32_t colorWriteEnable = uint32_t(RenderColorWriteEnable::ALL);
     RenderPrimitiveTopology primitiveTopology = RenderPrimitiveTopology::TRIANGLE_LIST;
-    uint8_t vertexStrides[16]{};
+    // D3D stream strides are 32-bit values. Keep the full value here because
+    // Vulkan bakes this stride into the graphics pipeline; narrowing it to
+    // uint8_t wraps larger title/game mesh strides and makes the GPU read
+    // vertices from the wrong rows, producing stretched/morphing geometry.
+    uint32_t vertexStrides[16]{};
     RenderFormat renderTargetFormat{};
     RenderFormat depthStencilFormat{};
     RenderSampleCounts sampleCount = RenderSampleCount::COUNT_1;
@@ -1738,7 +1742,9 @@ static void CreateImGuiBackend()
 
     if (rowPitch == (width * 4))
     {
-        memcpy(mappedMemory, pixels, slicePitch);
+        // The allocation may include placement padding; copy only the actual
+        // atlas pixels rather than reading past the source image.
+        memcpy(mappedMemory, pixels, size_t(width) * height * 4);
     }
     else
     {
@@ -1750,6 +1756,7 @@ static void CreateImGuiBackend()
         }
     }
 
+    uploadBuffer->flushMappedRange(0, slicePitch);
     uploadBuffer->unmap();
 
     ExecuteCopyCommandList([&]
@@ -2850,6 +2857,7 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
     {
         auto uploadBuffer = g_device->createBuffer(RenderBufferDesc::UploadBuffer(buffer->dataSize));
         copyBuffer(reinterpret_cast<T*>(uploadBuffer->map()));
+        uploadBuffer->flushMappedRange(0, buffer->dataSize);
         uploadBuffer->unmap();
 
         if (useCopyQueue)
@@ -5580,7 +5588,7 @@ static void ProcDrawPrimitiveUP(const RenderCommand& cmd)
     const auto& args = cmd.drawPrimitiveUP;
 
     SetPrimitiveType(args.primitiveType);
-    SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.vertexStrides[0], uint8_t(args.vertexStreamZeroStride));
+    SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.vertexStrides[0], args.vertexStreamZeroStride);
 
     auto allocation = g_uploadAllocators[g_frame].allocate<true>(reinterpret_cast<const uint32_t*>(args.vertexStreamZeroData), args.vertexStreamZeroSize, 0x4);
 
@@ -6071,7 +6079,7 @@ static void ProcSetStreamSource(const RenderCommand& cmd)
 {
     const auto& args = cmd.setStreamSource;
 
-    SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.vertexStrides[args.index], uint8_t(args.buffer != nullptr ? args.stride : 0));
+    SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.vertexStrides[args.index], args.buffer != nullptr ? args.stride : 0u);
 
     bool dirty = false;
 
@@ -6164,6 +6172,7 @@ static void ProcSetConditionalSurvey(const RenderCommand& cmd)
         // Clear previous survey result first.
         auto uploadBuffer = g_device->createBuffer(RenderBufferDesc::UploadBuffer(sizeof(uint32_t)));
         memset(uploadBuffer->map(), 0, sizeof(uint32_t));
+        uploadBuffer->flushMappedRange(0, sizeof(uint32_t));
         uploadBuffer->unmap();
 
         auto& commandList = g_commandLists[g_frame];
@@ -6954,6 +6963,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
             }
         }
 
+        uploadBuffer->flushMappedRange(0, curDstOffset);
         uploadBuffer->unmap();
 
         ExecuteCopyCommandList([&]
@@ -7029,6 +7039,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                 }
             }
 
+            uploadBuffer->flushMappedRange(0, slicePitch);
             uploadBuffer->unmap();
 
             stbi_image_free(stbImage);
