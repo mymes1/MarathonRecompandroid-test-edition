@@ -638,6 +638,20 @@ struct UploadAllocator
         return result;
     }
 
+    void flush()
+    {
+        for (uint32_t i = 0; i < buffers.size(); i++)
+        {
+            auto& uploadBuffer = buffers[i];
+            if (uploadBuffer.buffer == nullptr)
+                continue;
+
+            const uint32_t used = i < index ? UploadBuffer::SIZE : (i == index ? offset : 0);
+            if (used != 0)
+                uploadBuffer.buffer->flushMappedRange(0, used);
+        }
+    }
+
     void reset()
     {
         index = 0;
@@ -3682,6 +3696,11 @@ static void ProcExecuteCommandList(const RenderCommand& cmd)
     auto &commandList = g_commandLists[g_frame];
     if (g_capabilities.queryPools)
         commandList->writeTimestamp(g_queryPools[g_frame].get(), 1);
+    // Android Mali devices commonly expose host-visible memory without
+    // HOST_COHERENT. The upload allocator remains persistently mapped, so its
+    // writes must be explicitly flushed before the GPU consumes constants,
+    // vertex/index data, or staging data.
+    g_uploadAllocators[g_frame].flush();
     commandList->end();
 
     if (g_swapChainValid)

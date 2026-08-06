@@ -22,6 +22,9 @@ namespace plume {
         virtual ~RenderBuffer() { }
         virtual void *map(uint32_t subresource = 0, const RenderRange *readRange = nullptr) = 0;
         virtual void unmap(uint32_t subresource = 0, const RenderRange *writtenRange = nullptr) = 0;
+        // Makes host writes visible to the GPU for non-coherent mappings.
+        // Backends with coherent upload memory can keep this as a no-op.
+        virtual void flushMappedRange(uint64_t offset = 0, uint64_t size = UINT64_MAX) { }
         virtual std::unique_ptr<RenderBufferFormattedView> createBufferFormattedView(RenderFormat format) = 0;
         virtual void setName(const std::string &name) = 0;
         virtual uint64_t getDeviceAddress() const = 0;

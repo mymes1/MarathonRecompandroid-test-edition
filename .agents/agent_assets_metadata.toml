@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recompiled Mali compatibility APK"
-description = "Rebuilt arm64-v8a debug APK with Samsung Galaxy Tab A9 SM-X110 Android 15 Vulkan buffer-usage hardening."
+title = "Marathon Recompiled Mali upload-flush APK"
+description = "arm64-v8a debug APK rebuilt with explicit Vulkan mapped-memory flushing for Mali-G57 Android 15 upload buffers."

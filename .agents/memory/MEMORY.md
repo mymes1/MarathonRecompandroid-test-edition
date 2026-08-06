@@ -2,3 +2,4 @@
 - [Mali texture fallback](mali-texture-fallback.md) — CPU-decoded BC textures must retain sRGB sampling semantics or lighting can appear washed out/glossy.
 - [Mali upload footprints](mali-upload-footprints.md) — Vulkan buffer-to-image strides must use the upload footprint format, including its block height, when BC formats are converted.
 - [Mali Vulkan buffer contracts](mali-vulkan-buffer-contracts.md) — vertex usage and shader-device-address usage must match how Android Mali buffers are bound.
+- [Mali host-memory coherency](mali-host-coherency.md) — mapped upload writes must be flushed before Mali GPU consumption.

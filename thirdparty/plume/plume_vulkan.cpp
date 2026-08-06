@@ -966,7 +966,22 @@ namespace plume {
     }
 
     void VulkanBuffer::unmap(uint32_t subresource, const RenderRange *writtenRange) {
+        if (desc.heapType == RenderHeapType::UPLOAD || desc.heapType == RenderHeapType::GPU_UPLOAD) {
+            const VkDeviceSize flushSize = (writtenRange != nullptr)
+                ? (writtenRange->end - writtenRange->begin)
+                : VK_WHOLE_SIZE;
+            const VkDeviceSize flushOffset = (writtenRange != nullptr) ? writtenRange->begin : 0;
+            vmaFlushAllocation(device->allocator, allocation, flushOffset, flushSize);
+        }
         vmaUnmapMemory(device->allocator, allocation);
+    }
+
+    void VulkanBuffer::flushMappedRange(uint64_t offset, uint64_t size) {
+        if (desc.heapType != RenderHeapType::UPLOAD && desc.heapType != RenderHeapType::GPU_UPLOAD)
+            return;
+
+        const VkDeviceSize flushSize = (size == UINT64_MAX) ? VK_WHOLE_SIZE : size;
+        vmaFlushAllocation(device->allocator, allocation, offset, flushSize);
     }
 
     std::unique_ptr<RenderBufferFormattedView> VulkanBuffer::createBufferFormattedView(RenderFormat format) {
