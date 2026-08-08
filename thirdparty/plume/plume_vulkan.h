@@ -11,6 +11,7 @@
 
 #include <mutex>
 #include <set>
+#include <atomic>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -419,6 +420,7 @@ namespace plume {
         std::unique_ptr<RenderBuffer> nullBuffer;
         bool loadStoreOpNoneSupported = false;
         bool nullDescriptorSupported = false;
+        std::atomic<bool> deviceLost = false;
 
         VulkanDevice(VulkanInterface *renderInterface, const std::string &preferredDeviceName);
         ~VulkanDevice() override;

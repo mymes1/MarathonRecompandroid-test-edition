@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recompiled — Mali renderer fix APK"
-description = "Rebuilt arm64-v8a Android APK with Mali Vulkan synchronization, upload-path, and packaging fixes. APK signature verification passed."
+title = "Marathon Recomp corrected Android APK"
+description = "Rebuilt ARM64 debug APK with Mali upload synchronization, corrected Vulkan barriers, reduced texture-upload stalls, and reproducible SDK packaging. SHA-256: 73f22a4b3dbdab33742a9fc778fbbece8a7f3bfb2d4dfa0e7b7e8bccb0504c6c"

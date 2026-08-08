@@ -1663,9 +1663,9 @@ template<typename T>
 static void ExecuteCopyCommandList(const T& function)
 {
     // Texture loading normally runs on the render thread while the current
-    // graphics command list is open.  On Mali, recording uploads into the
+    // graphics command list is open. On Mali, recording uploads into the
     // separate copy list forces a submit + fence wait for every texture and
-    // leaves the graphics queue without an explicit ownership handoff.  Keep
+    // leaves the graphics queue without an explicit ownership handoff. Keep
     // the upload in the frame command buffer instead; the caller retains the
     // upload buffer in g_tempBuffers until that frame fence completes.
     if (g_isMali && g_graphicsCommandListOpen)
@@ -1791,14 +1791,12 @@ static void CreateImGuiBackend()
 
     ExecuteCopyCommandList([&]
         {
-            ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(g_imFontTexture->texture, RenderTextureLayout::COPY_DEST));
+            g_copyCommandList->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(g_imFontTexture->texture, RenderTextureLayout::COPY_DEST));
 
-            ActiveCopyCommandList()->copyTextureRegion(
+            g_copyCommandList->copyTextureRegion(
                 RenderTextureCopyLocation::Subresource(g_imFontTexture->texture, 0),
                 RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
         });
-    if (g_isMali && g_graphicsCommandListOpen)
-        g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
 
     g_imFontTexture->layout = RenderTextureLayout::COPY_DEST;
 
@@ -2920,7 +2918,7 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
         {
             ExecuteCopyCommandList([&]
                 {
-                    ActiveCopyCommandList()->copyBufferRegion(buffer->buffer->at(0), uploadBuffer->at(0), buffer->dataSize);
+                    g_copyCommandList->copyBufferRegion(buffer->buffer->at(0), uploadBuffer->at(0), buffer->dataSize);
                 });
         }
         else
@@ -7030,8 +7028,8 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
         uploadBuffer->unmap();
 
         ExecuteCopyCommandList([&]
-            {
-                ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
+                {
+                    ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
 
                 // The upload buffer contains the fallback representation when
                 // BC data was decoded or transcoded.  The copy footprint must
@@ -7124,9 +7122,6 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                         RenderTextureCopyLocation::Subresource(texture.texture, 0),
                         RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
                 });
-            if (g_isMali && g_graphicsCommandListOpen)
-                g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
-
             return true;
         }
     }

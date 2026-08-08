@@ -15,6 +15,15 @@ repo="$(cd "$(dirname "$0")" && pwd)"
 workspace_sdk="$repo/.android-sdk"
 ndk_version="29.0.14206865"
 
+# Gradle resolves the Android SDK from these variables even when the NDK
+# was already supplied by the caller. Prefer the workspace SDK when it is
+# complete, so the one-command build is reproducible in a clean shell.
+if [ -z "${ANDROID_SDK_ROOT:-}" ] && [ -z "${ANDROID_HOME:-}" ] &&
+    [ -f "$workspace_sdk/platforms/android-35/android.jar" ]; then
+    export ANDROID_SDK_ROOT="$workspace_sdk"
+    export ANDROID_HOME="$workspace_sdk"
+fi
+
 if [ -z "${ANDROID_NDK_HOME:-}" ] && [ -n "${ANDROID_NDK_ROOT:-}" ]; then
     export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
 fi

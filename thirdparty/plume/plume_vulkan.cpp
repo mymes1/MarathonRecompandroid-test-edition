@@ -3013,9 +3013,9 @@ namespace plume {
             VkBufferMemoryBarrier bufferMemoryBarrier = {};
             bufferMemoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
             // A barrier whose source stage is TOP_OF_PIPE does not wait for a
-            // preceding transfer.  This is especially visible on Mali, where
-            // a staged vertex/index copy can otherwise race vertex fetch and
-            // produce the stretched/morphed geometry seen on Android.
+            // preceding transfer. This is especially visible on Mali, where a
+            // staged vertex/index copy can otherwise race vertex fetch and
+            // produce stretched or morphing geometry.
             const RenderBarrierStages previousStages = interfaceBuffer->barrierStages;
             const VkPipelineStageFlags previousStageMask =
                 toStageFlags(previousStages, geometryEnabled, rtEnabled);
@@ -3056,7 +3056,7 @@ namespace plume {
             imageMemoryBarrier.subresourceRange.layerCount = interfaceTexture->desc.arraySize;
             imageMemoryBarrier.subresourceRange.aspectMask = toAspectFlags(interfaceTexture->desc.format, interfaceTexture->desc.flags);
             imageMemoryBarriers.emplace_back(imageMemoryBarrier);
-            srcStageMask |= toStageFlags(previousStages, geometryEnabled, rtEnabled);
+            srcStageMask |= toStageFlags(interfaceTexture->barrierStages, geometryEnabled, rtEnabled);
             interfaceTexture->textureLayout = textureBarrier.layout;
             interfaceTexture->barrierStages = stages;
         }
@@ -3782,6 +3782,9 @@ namespace plume {
         assert(commandLists != nullptr);
         assert(commandListCount > 0);
 
+        if (device->deviceLost.load(std::memory_order_acquire))
+            return;
+
         thread_local std::vector<VkSemaphore> waitSemaphoreVector;
         thread_local std::vector<VkSemaphore> signalSemaphoreVector;
         thread_local std::vector<VkCommandBuffer> commandBuffers;
@@ -3837,6 +3840,8 @@ namespace plume {
 
         if (res != VK_SUCCESS) {
             fprintf(stderr, "vkQueueSubmit failed with error code 0x%X.\n", res);
+            if (res == VK_ERROR_DEVICE_LOST)
+                device->deviceLost.store(true, std::memory_order_release);
             return;
         }
     }
@@ -3844,10 +3849,15 @@ namespace plume {
     void VulkanCommandQueue::waitForCommandFence(RenderCommandFence *fence) {
         assert(fence != nullptr);
 
+        if (device->deviceLost.load(std::memory_order_acquire))
+            return;
+
         VulkanCommandFence *interfaceFence = static_cast<VulkanCommandFence *>(fence);
         VkResult res = vkWaitForFences(device->vk, 1, &interfaceFence->vk, VK_TRUE, UINT64_MAX);
         if (res != VK_SUCCESS) {
             fprintf(stderr, "vkWaitForFences failed with error code 0x%X.\n", res);
+            if (res == VK_ERROR_DEVICE_LOST)
+                device->deviceLost.store(true, std::memory_order_release);
             return;
         }
 
