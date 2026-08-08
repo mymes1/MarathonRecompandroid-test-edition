@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recompiled — SM-X110 graphics fix"
-description = "Fresh Android APK with the Mali-G57 vertex-stride, Vulkan upload-flush, system-driver, texture-upload, and shader-pipeline compatibility fixes."
+title = "Marathon Recompiled — Mali geometry fix APK"
+description = "Fresh arm64 debug APK rebuilt with Mali staged vertex/index uploads synchronized on the graphics queue, plus the Mali-safe texture fallback and renderer fixes."

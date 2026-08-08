@@ -183,6 +183,7 @@ struct GuestTexture : GuestBaseTexture
     uint32_t depth = 0;
     uint32_t mipLevels = 1;
     RenderTextureViewDimension viewDimension = RenderTextureViewDimension::UNKNOWN;
+    bool isArrayTexture = false;
     void* mappedMemory = nullptr;
     ankerl::unordered_dense::map<uint32_t, std::unique_ptr<RenderFramebuffer>> framebuffers;
     std::vector<std::unique_ptr<RenderTextureView>> framebufferViews;

@@ -967,11 +967,24 @@ namespace plume {
 
     void VulkanBuffer::unmap(uint32_t subresource, const RenderRange *writtenRange) {
         if (desc.heapType == RenderHeapType::UPLOAD || desc.heapType == RenderHeapType::GPU_UPLOAD) {
-            const VkDeviceSize flushSize = (writtenRange != nullptr)
-                ? (writtenRange->end - writtenRange->begin)
-                : VK_WHOLE_SIZE;
-            const VkDeviceSize flushOffset = (writtenRange != nullptr) ? writtenRange->begin : 0;
-            vmaFlushAllocation(device->allocator, allocation, flushOffset, flushSize);
+            VkDeviceSize flushOffset = 0;
+            VkDeviceSize flushSize = VK_WHOLE_SIZE;
+            if (writtenRange != nullptr) {
+                // A malformed range must not underflow into a huge flush on
+                // non-coherent Android memory.  VMA aligns valid subranges to
+                // the device atom size, but it cannot repair an invalid range.
+                const VkDeviceSize allocationSize = desc.size;
+                const VkDeviceSize begin = std::min<VkDeviceSize>(writtenRange->begin, allocationSize);
+                const VkDeviceSize end = std::min<VkDeviceSize>(writtenRange->end, allocationSize);
+                if (end > begin) {
+                    flushOffset = begin;
+                    flushSize = end - begin;
+                } else {
+                    flushSize = 0;
+                }
+            }
+            if (flushSize != 0)
+                vmaFlushAllocation(device->allocator, allocation, flushOffset, flushSize);
         }
         vmaUnmapMemory(device->allocator, allocation);
     }
@@ -980,8 +993,12 @@ namespace plume {
         if (desc.heapType != RenderHeapType::UPLOAD && desc.heapType != RenderHeapType::GPU_UPLOAD)
             return;
 
-        const VkDeviceSize flushSize = (size == UINT64_MAX) ? VK_WHOLE_SIZE : size;
-        vmaFlushAllocation(device->allocator, allocation, offset, flushSize);
+        const VkDeviceSize allocationSize = desc.size;
+        const VkDeviceSize flushOffset = std::min<VkDeviceSize>(offset, allocationSize);
+        const VkDeviceSize requestedSize = (size == UINT64_MAX) ? allocationSize : size;
+        const VkDeviceSize flushSize = std::min<VkDeviceSize>(requestedSize, allocationSize - flushOffset);
+        if (flushSize != 0)
+            vmaFlushAllocation(device->allocator, allocation, flushOffset, flushSize);
     }
 
     std::unique_ptr<RenderBufferFormattedView> VulkanBuffer::createBufferFormattedView(RenderFormat format) {
@@ -4125,7 +4142,19 @@ namespace plume {
             createDeviceChain = &robustnessFeatures;
         }
 
-        const bool bufferDeviceAddressSupported = bufferDeviceAddressFeatures.bufferDeviceAddress;
+        const bool bufferDeviceAddressExtensionFound =
+            supportedOptionalExtensions.find(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) != supportedOptionalExtensions.end();
+        const bool bufferDeviceAddressCore =
+            VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion) > 1 ||
+            (VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion) == 1 &&
+             VK_VERSION_MINOR(physicalDeviceProperties.apiVersion) >= 2);
+        // The KHR feature structure can be queried on drivers that do not
+        // advertise the extension, but that does not make the KHR entry point
+        // legal to use on Vulkan 1.1.  Only expose BDA when either the core
+        // Vulkan 1.2 path or the advertised KHR extension is available.
+        const bool bufferDeviceAddressSupported =
+            bufferDeviceAddressFeatures.bufferDeviceAddress &&
+            (bufferDeviceAddressCore || bufferDeviceAddressExtensionFound);
         if (bufferDeviceAddressSupported) {
             bufferDeviceAddressFeatures.pNext = createDeviceChain;
             createDeviceChain = &bufferDeviceAddressFeatures;
@@ -4135,7 +4164,7 @@ namespace plume {
             // buffer references on every non-D3D12 backend; without it, calls into the (unresolved,
             // null) function pointer will crash with SIGSEGV the first time a buffer is uploaded.
             fprintf(stderr, "[plume] Warning: VK_KHR_buffer_device_address / core 1.2 bufferDeviceAddress feature "
-                "is not supported by this physical device. Rendering will likely crash.\n");
+                "is not available through a valid core or advertised KHR path. Device addresses are disabled.\n");
         }
         
         if (portabilityFound) {

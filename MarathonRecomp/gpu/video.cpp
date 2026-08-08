@@ -2219,7 +2219,9 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     // Some stock Mali Android drivers crash while creating ETC2 images produced
     // by the BC fallback path. Prefer the slower RGBA CPU decode on Mali; it is
     // intentionally selected before resource loading and is safer than losing
-    // the process during Vulkan image creation.
+    // the process during Vulkan image creation.  ETC2 transcoding also adds a
+    // large amount of CPU work while archives are loading, which causes severe
+    // frame pacing drops on Mali-G57 devices.
     // Also covers Samsung Galaxy Tab A9 variants (SM-X110/SM-X115/SM-X116/SM-X117)
     // whose Mali-G57 driver exhibits the same ETC2 creation fault.
     {
@@ -2860,7 +2862,16 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
         uploadBuffer->flushMappedRange(0, buffer->dataSize);
         uploadBuffer->unmap();
 
-        if (useCopyQueue)
+        // A vertex/index upload must be visible to the graphics queue before
+        // the next draw.  The copy queue path is only safe when the destination
+        // buffer lives in the host-visible device-local upload heap: in that
+        // case there is no staging copy at all (the branch above).  On Mali we
+        // deliberately disable gpuUploadHeap, so using the separate copy queue
+        // here would race the graphics queue because there is no queue ownership
+        // handoff in this renderer.  Keep these uploads on the graphics list,
+        // where the COPY -> GRAPHICS buffer barriers below make the write
+        // visible before vertex fetch.
+        if (useCopyQueue && g_capabilities.gpuUploadHeap)
         {
             ExecuteCopyCommandList([&]
                 {
@@ -3919,6 +3930,7 @@ static GuestTexture* CreateTexture(uint32_t width, uint32_t height, uint32_t dep
     texture->format = desc.format;
     texture->mipLevels = viewDesc.mipLevels;
     texture->viewDimension = viewDesc.dimension;
+    texture->isArrayTexture = texture->type == ResourceType::ArrayTexture;
     texture->descriptorIndex = g_textureDescriptorAllocator.allocate();
 
     g_textureDescriptorSet->setTexture(texture->descriptorIndex, texture->texture, RenderTextureLayout::SHADER_READ, texture->textureView.get());
@@ -4633,10 +4645,14 @@ static void SetTextureInRenderThread(uint32_t index, GuestTexture* texture)
     auto viewDimension = texture != nullptr ? texture->viewDimension : RenderTextureViewDimension::UNKNOWN;
 
     SetDirtyValue(g_dirtyStates.sharedConstants, g_sharedConstants.texture2DIndices[index],
-        viewDimension == RenderTextureViewDimension::TEXTURE_2D ? texture->descriptorIndex : TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D);
+        texture != nullptr && viewDimension == RenderTextureViewDimension::TEXTURE_2D && !texture->isArrayTexture ?
+            texture->descriptorIndex : TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D);
 
+    // D3D array textures are represented by a 2D view whose underlying
+    // resource has more than one array slice.  The view enum alone therefore
+    // cannot distinguish a regular 2D texture from a 2D array here.
     SetDirtyValue(g_dirtyStates.sharedConstants, g_sharedConstants.texture2DArrayIndices[index], texture != nullptr &&
-        viewDimension == RenderTextureViewDimension::TEXTURE_2D ? texture->descriptorIndex : TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D_ARRAY);
+        texture->isArrayTexture ? texture->descriptorIndex : TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D_ARRAY);
 
     SetDirtyValue(g_dirtyStates.sharedConstants, g_sharedConstants.textureCubeIndices[index], texture != nullptr &&
         viewDimension == RenderTextureViewDimension::TEXTURE_CUBE ? texture->descriptorIndex : TEXTURE_DESCRIPTOR_NULL_TEXTURE_CUBE);
@@ -6837,6 +6853,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
         texture.height = ddsDesc.height;
         texture.mipLevels = viewDesc.mipLevels;
         texture.viewDimension = viewDesc.dimension;
+        texture.isArrayTexture = ddsDesc.type == ddspp::TextureType::Texture2D && desc.arraySize > 1;
 
         struct Slice
         {
@@ -6970,6 +6987,13 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
             {
                 g_copyCommandList->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
 
+                // The upload buffer contains the fallback representation when
+                // BC data was decoded or transcoded.  The copy footprint must
+                // describe that representation, not the destination image's
+                // original BC format, or Vulkan computes the wrong row stride.
+                const RenderFormat uploadFormat =
+                    bcFallback.mode == BCnFallbackMode::None ? desc.format : bcFallback.targetFormat;
+
                 for (size_t i = 0; i < slices.size(); i++)
                 {
                     auto& slice = slices[i];
@@ -6996,7 +7020,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
 
                     g_copyCommandList->copyTextureRegion(
                         RenderTextureCopyLocation::Subresource(texture.texture, i % desc.mipLevels, i / desc.mipLevels),
-                        RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), desc.format, slice.width, slice.height, slice.depth, footprintRowWidth, slice.dstOffset));
+                        RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), uploadFormat, slice.width, slice.height, slice.depth, footprintRowWidth, slice.dstOffset));
                 }
             });
 
