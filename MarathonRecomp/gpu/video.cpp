@@ -383,6 +383,12 @@ static Mutex g_copyMutex;
 static std::unique_ptr<RenderCommandQueue> g_copyQueue;
 static std::unique_ptr<RenderCommandList> g_copyCommandList;
 static std::unique_ptr<RenderCommandFence> g_copyCommandFence;
+// These are only meaningful to the thread recording the current command list.
+// Resource loading can happen on a worker thread; keeping them thread-local
+// prevents a worker from mistaking the render thread's open list for its own
+// and recording uploads into a command buffer concurrently.
+static thread_local bool g_graphicsCommandListOpen = false;
+static thread_local RenderCommandList* g_activeCopyCommandList = nullptr;
 
 static Mutex g_discardMutex;
 static std::unique_ptr<RenderCommandList> g_discardCommandList;
@@ -1656,13 +1662,37 @@ static std::unique_ptr<RenderPipeline> g_imAdditivePipeline;
 template<typename T>
 static void ExecuteCopyCommandList(const T& function)
 {
+    // Texture loading normally runs on the render thread while the current
+    // graphics command list is open.  On Mali, recording uploads into the
+    // separate copy list forces a submit + fence wait for every texture and
+    // leaves the graphics queue without an explicit ownership handoff.  Keep
+    // the upload in the frame command buffer instead; the caller retains the
+    // upload buffer in g_tempBuffers until that frame fence completes.
+    if (g_isMali && g_graphicsCommandListOpen)
+    {
+        RenderCommandList* previousCommandList = g_activeCopyCommandList;
+        g_activeCopyCommandList = g_commandLists[g_frame].get();
+        function();
+        g_activeCopyCommandList = previousCommandList;
+        return;
+    }
+
     std::lock_guard lock(g_copyMutex);
 
     g_copyCommandList->begin();
+    RenderCommandList* previousCommandList = g_activeCopyCommandList;
+    g_activeCopyCommandList = g_copyCommandList.get();
     function();
+    g_activeCopyCommandList = previousCommandList;
     g_copyCommandList->end();
     g_copyQueue->executeCommandLists(g_copyCommandList.get(), g_copyCommandFence.get());
     g_copyQueue->waitForCommandFence(g_copyCommandFence.get());
+}
+
+static RenderCommandList* ActiveCopyCommandList()
+{
+    assert(g_activeCopyCommandList != nullptr);
+    return g_activeCopyCommandList;
 }
 
 struct ImGuiPushConstants
@@ -1761,12 +1791,14 @@ static void CreateImGuiBackend()
 
     ExecuteCopyCommandList([&]
         {
-            g_copyCommandList->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(g_imFontTexture->texture, RenderTextureLayout::COPY_DEST));
+            ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(g_imFontTexture->texture, RenderTextureLayout::COPY_DEST));
 
-            g_copyCommandList->copyTextureRegion(
+            ActiveCopyCommandList()->copyTextureRegion(
                 RenderTextureCopyLocation::Subresource(g_imFontTexture->texture, 0),
                 RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
         });
+    if (g_isMali && g_graphicsCommandListOpen)
+        g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
 
     g_imFontTexture->layout = RenderTextureLayout::COPY_DEST;
 
@@ -1987,6 +2019,7 @@ static void BeginCommandList()
     auto& commandList = g_commandLists[g_frame];
 
     commandList->begin();
+    g_graphicsCommandListOpen = true;
     if (g_capabilities.queryPools)
     {
         commandList->resetQueryPool(g_queryPools[g_frame].get(), 0, NUM_QUERIES);
@@ -2274,7 +2307,10 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
 
             // Stock Mali Vulkan drivers are considerably less tolerant of optional
             // paths than Adreno/Turnip.  Disable features that cause SIGSEGV inside
-            // the system driver on these devices.
+            // the system driver on these devices.  In particular, do not use the
+            // host-visible device-local upload heap: on the affected Mali driver
+            // direct CPU writes can remain stale when consumed by vertex fetch,
+            // producing the stretched/morphed geometry seen in-game.
             g_capabilities.gpuUploadHeap = false;
             g_capabilities.presentWait = false;
             g_capabilities.displayTiming = false;
@@ -2378,7 +2414,15 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
             queryPool = g_device->createQueryPool(NUM_QUERIES);
     }
 
-    g_copyQueue = g_device->createCommandQueue(RenderCommandListType::COPY);
+    // Mali's system Vulkan driver commonly exposes a distinct transfer
+    // family, but this renderer has no queue-family ownership transfer path
+    // for resources uploaded there and consumed by graphics.  Using that
+    // queue also forces a CPU fence wait for every texture upload.  Keep
+    // Mali uploads on the graphics queue so the existing in-command-buffer
+    // barriers establish both visibility and ordering without stalling the
+    // frame or handing resources between queue families.
+    g_copyQueue = g_device->createCommandQueue(
+        g_isMali ? RenderCommandListType::DIRECT : RenderCommandListType::COPY);
     g_copyCommandList = g_copyQueue->createCommandList();
     g_copyCommandFence = g_device->createCommandFence();
 
@@ -2854,6 +2898,7 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
     {
         copyBuffer(reinterpret_cast<T*>(buffer->buffer->map()));
         buffer->buffer->unmap();
+
     }
     else
     {
@@ -2869,13 +2914,13 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
         // deliberately disable gpuUploadHeap, so using the separate copy queue
         // here would race the graphics queue because there is no queue ownership
         // handoff in this renderer.  Keep these uploads on the graphics list,
-        // where the COPY -> GRAPHICS buffer barriers below make the write
-        // visible before vertex fetch.
+        // where the COPY -> GRAPHICS buffer barriers below make the write visible
+        // before vertex fetch.
         if (useCopyQueue && g_capabilities.gpuUploadHeap)
         {
             ExecuteCopyCommandList([&]
                 {
-                    g_copyCommandList->copyBufferRegion(buffer->buffer->at(0), uploadBuffer->at(0), buffer->dataSize);
+                    ActiveCopyCommandList()->copyBufferRegion(buffer->buffer->at(0), uploadBuffer->at(0), buffer->dataSize);
                 });
         }
         else
@@ -3721,6 +3766,7 @@ static void ProcExecuteCommandList(const RenderCommand& cmd)
     // vertex/index data, or staging data.
     g_uploadAllocators[g_frame].flush();
     commandList->end();
+    g_graphicsCommandListOpen = false;
 
     if (g_swapChainValid)
     {
@@ -6985,7 +7031,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
 
         ExecuteCopyCommandList([&]
             {
-                g_copyCommandList->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
+                ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
 
                 // The upload buffer contains the fallback representation when
                 // BC data was decoded or transcoded.  The copy footprint must
@@ -7018,11 +7064,13 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                         footprintRowWidth = (slice.dstRowPitch / destinationBlockSize) * destinationBlockWidth;
                     }
 
-                    g_copyCommandList->copyTextureRegion(
+                    ActiveCopyCommandList()->copyTextureRegion(
                         RenderTextureCopyLocation::Subresource(texture.texture, i % desc.mipLevels, i / desc.mipLevels),
                         RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), uploadFormat, slice.width, slice.height, slice.depth, footprintRowWidth, slice.dstOffset));
                 }
             });
+        if (g_isMali && g_graphicsCommandListOpen)
+            g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
 
         return true;
     }
@@ -7070,12 +7118,14 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
 
             ExecuteCopyCommandList([&]
                 {
-                    g_copyCommandList->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
+                    ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
 
-                    g_copyCommandList->copyTextureRegion(
+                    ActiveCopyCommandList()->copyTextureRegion(
                         RenderTextureCopyLocation::Subresource(texture.texture, 0),
                         RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
                 });
+            if (g_isMali && g_graphicsCommandListOpen)
+                g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
 
             return true;
         }

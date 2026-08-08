@@ -107,6 +107,8 @@ add_custom_command(
             "${XENOS_RECOMP_INCLUDE}"
     DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/private/shader"
+        "${CMAKE_CURRENT_SOURCE_DIR}/private/shader.arc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/private/shader_lt.arc"
         ${XENOS_RECOMP_SOURCES}
         ${XENOS_RECOMP_INCLUDE}
         ${MARATHON_RECOMP_XENOS_RECOMP_TOOL_DEPENDS}

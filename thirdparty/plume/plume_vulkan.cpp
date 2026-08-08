@@ -676,6 +676,37 @@ namespace plume {
         return flags;
     }
 
+    static VkAccessFlags toAccessFlags(RenderBarrierStages stages) {
+        VkAccessFlags flags = 0;
+
+        if (stages & RenderBarrierStage::GRAPHICS) {
+            flags |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+            flags |= VK_ACCESS_INDEX_READ_BIT;
+            flags |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+            flags |= VK_ACCESS_UNIFORM_READ_BIT;
+            flags |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+            flags |= VK_ACCESS_SHADER_READ_BIT;
+            flags |= VK_ACCESS_SHADER_WRITE_BIT;
+            flags |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+            flags |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            flags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+            flags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        }
+
+        if (stages & RenderBarrierStage::COMPUTE) {
+            flags |= VK_ACCESS_UNIFORM_READ_BIT;
+            flags |= VK_ACCESS_SHADER_READ_BIT;
+            flags |= VK_ACCESS_SHADER_WRITE_BIT;
+        }
+
+        if (stages & RenderBarrierStage::COPY) {
+            flags |= VK_ACCESS_TRANSFER_READ_BIT;
+            flags |= VK_ACCESS_TRANSFER_WRITE_BIT;
+        }
+
+        return flags;
+    }
+
     static VkShaderStageFlagBits toStage(RenderRaytracingPipelineLibrarySymbolType type) {
         switch (type) {
         case RenderRaytracingPipelineLibrarySymbolType::RAYGEN:
@@ -2969,7 +3000,7 @@ namespace plume {
 
         const bool geometryEnabled = queue->device->capabilities.geometryShader;
         const bool rtEnabled = queue->device->capabilities.raytracing;
-        VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkPipelineStageFlags srcStageMask = 0;
         VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT | toStageFlags(stages, geometryEnabled, rtEnabled);
         thread_local std::vector<VkBufferMemoryBarrier> bufferMemoryBarriers;
         thread_local std::vector<VkImageMemoryBarrier> imageMemoryBarriers;
@@ -2981,15 +3012,26 @@ namespace plume {
             VulkanBuffer *interfaceBuffer = static_cast<VulkanBuffer *>(bufferBarrier.buffer);
             VkBufferMemoryBarrier bufferMemoryBarrier = {};
             bufferMemoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            bufferMemoryBarrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT; // TODO
-            bufferMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT; // TODO
+            // A barrier whose source stage is TOP_OF_PIPE does not wait for a
+            // preceding transfer.  This is especially visible on Mali, where
+            // a staged vertex/index copy can otherwise race vertex fetch and
+            // produce the stretched/morphed geometry seen on Android.
+            const RenderBarrierStages previousStages = interfaceBuffer->barrierStages;
+            const VkPipelineStageFlags previousStageMask =
+                toStageFlags(previousStages, geometryEnabled, rtEnabled);
+            bufferMemoryBarrier.srcAccessMask = toAccessFlags(previousStages);
+            bufferMemoryBarrier.dstAccessMask = toAccessFlags(stages);
+            if (bufferMemoryBarrier.srcAccessMask == 0)
+                bufferMemoryBarrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+            if (bufferMemoryBarrier.dstAccessMask == 0)
+                bufferMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
             bufferMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             bufferMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             bufferMemoryBarrier.buffer = interfaceBuffer->vk;
             bufferMemoryBarrier.offset = 0;
             bufferMemoryBarrier.size = interfaceBuffer->desc.size;
             bufferMemoryBarriers.emplace_back(bufferMemoryBarrier);
-            srcStageMask |= toStageFlags(interfaceBuffer->barrierStages, geometryEnabled, rtEnabled);
+            srcStageMask |= previousStageMask;
             interfaceBuffer->barrierStages = stages;
         }
 
@@ -2999,8 +3041,13 @@ namespace plume {
             VkImageMemoryBarrier imageMemoryBarrier = {};
             imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
             imageMemoryBarrier.image = interfaceTexture->vk;
-            imageMemoryBarrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT; // TODO
-            imageMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT; // TODO
+            const RenderBarrierStages previousStages = interfaceTexture->barrierStages;
+            imageMemoryBarrier.srcAccessMask = toAccessFlags(previousStages);
+            imageMemoryBarrier.dstAccessMask = toAccessFlags(stages);
+            if (imageMemoryBarrier.srcAccessMask == 0)
+                imageMemoryBarrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+            if (imageMemoryBarrier.dstAccessMask == 0)
+                imageMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
             imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             imageMemoryBarrier.oldLayout = toImageLayout(interfaceTexture->textureLayout);
@@ -3009,7 +3056,7 @@ namespace plume {
             imageMemoryBarrier.subresourceRange.layerCount = interfaceTexture->desc.arraySize;
             imageMemoryBarrier.subresourceRange.aspectMask = toAspectFlags(interfaceTexture->desc.format, interfaceTexture->desc.flags);
             imageMemoryBarriers.emplace_back(imageMemoryBarrier);
-            srcStageMask |= toStageFlags(interfaceTexture->barrierStages, geometryEnabled, rtEnabled);
+            srcStageMask |= toStageFlags(previousStages, geometryEnabled, rtEnabled);
             interfaceTexture->textureLayout = textureBarrier.layout;
             interfaceTexture->barrierStages = stages;
         }
@@ -3018,6 +3065,11 @@ namespace plume {
             return;
         }
 
+        // Resources with no tracked producer are initialized from TOP_OF_PIPE;
+        // resources with a tracked producer use that producer's stage so the
+        // dependency is real rather than merely an access-mask annotation.
+        if (srcStageMask == 0)
+            srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         vkCmdPipelineBarrier(vk, srcStageMask, dstStageMask, 0, 0, nullptr, uint32_t(bufferMemoryBarriers.size()), bufferMemoryBarriers.data(), uint32_t(imageMemoryBarriers.size()), imageMemoryBarriers.data());
     }
 
@@ -4351,7 +4403,11 @@ namespace plume {
         capabilities.maxTextureSize = physicalDeviceProperties.limits.maxImageDimension2D;
         capabilities.preferHDR = memoryHeapSize > (512 * 1024 * 1024);
         capabilities.dynamicDepthBias = true;
-        capabilities.queryPools = true;
+        // Mali-G57 Android drivers may expose timestamp support while
+        // reporting zero timestampValidBits.  Creating and using timestamp
+        // query pools in that state is both unreliable and unnecessary for
+        // rendering; the frontend also disables the related timing path.
+        capabilities.queryPools = physicalDeviceProperties.limits.timestampComputeAndGraphics;
         capabilities.uma = (description.type == RenderDeviceType::INTEGRATED) && hasHostVisibleDeviceLocalMemory;
         capabilities.gpuUploadHeap = capabilities.uma;
 
