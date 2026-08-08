@@ -1791,12 +1791,14 @@ static void CreateImGuiBackend()
 
     ExecuteCopyCommandList([&]
         {
-            g_copyCommandList->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(g_imFontTexture->texture, RenderTextureLayout::COPY_DEST));
+            ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(g_imFontTexture->texture, RenderTextureLayout::COPY_DEST));
 
-            g_copyCommandList->copyTextureRegion(
+            ActiveCopyCommandList()->copyTextureRegion(
                 RenderTextureCopyLocation::Subresource(g_imFontTexture->texture, 0),
                 RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
         });
+    if (g_isMali && g_graphicsCommandListOpen)
+        g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
 
     g_imFontTexture->layout = RenderTextureLayout::COPY_DEST;
 
@@ -7122,6 +7124,8 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                         RenderTextureCopyLocation::Subresource(texture.texture, 0),
                         RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
                 });
+            if (g_isMali && g_graphicsCommandListOpen)
+                g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
             return true;
         }
     }

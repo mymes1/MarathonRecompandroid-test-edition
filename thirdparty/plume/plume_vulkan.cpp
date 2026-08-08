@@ -4417,7 +4417,16 @@ namespace plume {
         // reporting zero timestampValidBits.  Creating and using timestamp
         // query pools in that state is both unreliable and unnecessary for
         // rendering; the frontend also disables the related timing path.
-        capabilities.queryPools = physicalDeviceProperties.limits.timestampComputeAndGraphics;
+        // A device can advertise timestamp commands while a particular queue
+        // family reports no valid timestamp bits.  The renderer writes its
+        // timestamps on the direct/graphics queue, so only enable this path
+        // when that queue can actually produce usable results.  Mali drivers
+        // have been observed to expose the former without the latter.
+        const uint32_t directQueueFamily = queueFamilyIndices[toFamilyIndex(RenderCommandListType::DIRECT)];
+        capabilities.queryPools =
+            physicalDeviceProperties.limits.timestampComputeAndGraphics &&
+            directQueueFamily < queueFamilyProperties.size() &&
+            queueFamilyProperties[directQueueFamily].timestampValidBits != 0;
         capabilities.uma = (description.type == RenderDeviceType::INTEGRATED) && hasHostVisibleDeviceLocalMemory;
         capabilities.gpuUploadHeap = capabilities.uma;
 
