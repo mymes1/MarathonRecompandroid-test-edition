@@ -2985,7 +2985,15 @@ static void ProcUnlockBuffer32(const RenderCommand& cmd)
 
 static void UnlockVertexBuffer(GuestBuffer* buffer)
 {
-    UnlockBuffer<uint32_t>(buffer);
+    // Vertex/index uploads must be recorded by the render thread.  On the
+    // Mali compatibility path gpuUploadHeap is disabled, so UnlockBuffer()
+    // uses a staging buffer and records copy/barrier commands into the active
+    // graphics command list.  Calling it directly from the guest thread races
+    // the render thread's command recording and corrupts shared geometry.
+    RenderCommand cmd;
+    cmd.type = RenderCommandType::UnlockBuffer32;
+    cmd.unlockBuffer.buffer = buffer;
+    g_renderQueue.enqueue(cmd);
 }
 
 static void GetVertexBufferDesc(GuestBuffer* buffer, GuestBufferDesc* desc) 
@@ -3000,10 +3008,14 @@ static void* LockIndexBuffer(GuestBuffer* buffer, uint32_t, uint32_t, uint32_t f
 
 static void UnlockIndexBuffer(GuestBuffer* buffer) 
 {
-    if (buffer->guestFormat == D3DFMT_INDEX32)
-        UnlockBuffer<uint32_t>(buffer);
-    else
-        UnlockBuffer<uint16_t>(buffer);
+    // Keep index uploads on the same serialized render-thread path as vertex
+    // uploads.  The command type preserves the guest index width for the
+    // endian conversion performed by ProcUnlockBuffer16/32.
+    RenderCommand cmd;
+    cmd.type = buffer->guestFormat == D3DFMT_INDEX32 ?
+        RenderCommandType::UnlockBuffer32 : RenderCommandType::UnlockBuffer16;
+    cmd.unlockBuffer.buffer = buffer;
+    g_renderQueue.enqueue(cmd);
 }
 
 static void GetIndexBufferDesc(GuestBuffer* buffer, GuestBufferDesc* desc)
