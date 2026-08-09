@@ -1703,6 +1703,13 @@ static void ExecuteCopyCommandList(const T& function)
 
     std::lock_guard lock(g_copyMutex);
 
+    // A loader thread cannot append to the render thread's command buffer.
+    // On Mali the copy queue is an alias of the graphics queue, so submit the
+    // upload there and wait for completion before the guest can bind the
+    // texture.  This is intentionally serialized: a second command buffer on
+    // the same Vulkan queue has no implicit ordering with an in-progress frame
+    // command buffer, and Mali-G57 otherwise intermittently samples an image
+    // while its copy is still pending.
     g_copyCommandList->begin();
     RenderCommandList* previousCommandList = g_activeCopyCommandList;
     g_activeCopyCommandList = g_copyCommandList.get();

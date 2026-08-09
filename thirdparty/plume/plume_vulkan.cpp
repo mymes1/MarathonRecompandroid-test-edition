@@ -57,6 +57,16 @@ namespace plume {
         return g_liveVulkanTextures.find(texture) != g_liveVulkanTextures.end();
     }
 
+    static void registerVulkanTexture(const VulkanTexture *texture) {
+        std::lock_guard lock(g_liveVulkanTexturesMutex);
+        g_liveVulkanTextures.insert(texture);
+    }
+
+    static void unregisterVulkanTexture(const VulkanTexture *texture) {
+        std::lock_guard lock(g_liveVulkanTexturesMutex);
+        g_liveVulkanTextures.erase(texture);
+    }
+
     // Required buffer alignment for acceleration structures.
     static const uint64_t AccelerationStructureBufferAlignment = 256;
 
@@ -1106,13 +1116,18 @@ namespace plume {
 
     // VulkanTexture
 
+    VulkanTexture::VulkanTexture() {
+        // Swapchain textures are first default-constructed in their vector and
+        // then initialized in place.  They are still valid RenderTexture
+        // wrappers for the entire lifetime of the vector element, so register
+        // the element itself rather than a temporary used to initialize it.
+        registerVulkanTexture(this);
+    }
+
     VulkanTexture::VulkanTexture(VulkanDevice *device, VulkanPool *pool, const RenderTextureDesc &desc) {
         assert(device != nullptr);
 
-        {
-            std::lock_guard lock(g_liveVulkanTexturesMutex);
-            g_liveVulkanTextures.insert(this);
-        }
+        registerVulkanTexture(this);
 
         this->device = device;
         this->pool = pool;
@@ -1169,20 +1184,80 @@ namespace plume {
         assert(device != nullptr);
         assert(image != VK_NULL_HANDLE);
 
-        {
-            std::lock_guard lock(g_liveVulkanTexturesMutex);
-            g_liveVulkanTextures.insert(this);
-        }
+        registerVulkanTexture(this);
 
         this->device = device;
         vk = image;
     }
 
-    VulkanTexture::~VulkanTexture() {
-        {
-            std::lock_guard lock(g_liveVulkanTexturesMutex);
-            g_liveVulkanTextures.erase(this);
+    VulkanTexture::VulkanTexture(VulkanTexture &&other) noexcept {
+        registerVulkanTexture(this);
+
+        vk = other.vk;
+        imageView = other.imageView;
+        imageFormat = other.imageFormat;
+        imageSubresourceRange = other.imageSubresourceRange;
+        device = other.device;
+        pool = other.pool;
+        allocation = other.allocation;
+        allocationInfo = other.allocationInfo;
+        textureLayout = other.textureLayout;
+        barrierStages = other.barrierStages;
+        ownership = other.ownership;
+        desc = other.desc;
+
+        other.vk = VK_NULL_HANDLE;
+        other.imageView = VK_NULL_HANDLE;
+        other.allocation = VK_NULL_HANDLE;
+        other.device = nullptr;
+        other.pool = nullptr;
+        other.ownership = false;
+        other.textureLayout = RenderTextureLayout::UNKNOWN;
+        other.barrierStages = RenderBarrierStage::NONE;
+    }
+
+    VulkanTexture &VulkanTexture::operator=(VulkanTexture &&other) noexcept {
+        if (this == &other) {
+            return *this;
         }
+
+        // The destination is a real vector element and is already registered.
+        // Release only resources owned by that element before taking the
+        // source's handles.  Swapchain images themselves are not owned.
+        if (imageView != VK_NULL_HANDLE && device != nullptr) {
+            vkDestroyImageView(device->vk, imageView, nullptr);
+        }
+        if (ownership && vk != VK_NULL_HANDLE && device != nullptr) {
+            vmaDestroyImage(device->allocator, vk, allocation);
+        }
+
+        vk = other.vk;
+        imageView = other.imageView;
+        imageFormat = other.imageFormat;
+        imageSubresourceRange = other.imageSubresourceRange;
+        device = other.device;
+        pool = other.pool;
+        allocation = other.allocation;
+        allocationInfo = other.allocationInfo;
+        textureLayout = other.textureLayout;
+        barrierStages = other.barrierStages;
+        ownership = other.ownership;
+        desc = other.desc;
+
+        other.vk = VK_NULL_HANDLE;
+        other.imageView = VK_NULL_HANDLE;
+        other.allocation = VK_NULL_HANDLE;
+        other.device = nullptr;
+        other.pool = nullptr;
+        other.ownership = false;
+        other.textureLayout = RenderTextureLayout::UNKNOWN;
+        other.barrierStages = RenderBarrierStage::NONE;
+
+        return *this;
+    }
+
+    VulkanTexture::~VulkanTexture() {
+        unregisterVulkanTexture(this);
 
         if (imageView != VK_NULL_HANDLE) {
             vkDestroyImageView(device->vk, imageView, nullptr);
@@ -3087,11 +3162,20 @@ namespace plume {
         for (uint32_t i = 0; i < textureBarriersCount; i++) {
             const RenderTextureBarrier &textureBarrier = textureBarriers[i];
             VulkanTexture *interfaceTexture = static_cast<VulkanTexture *>(textureBarrier.texture);
-            if (!isLiveVulkanTexture(interfaceTexture) ||
-                interfaceTexture->vk == VK_NULL_HANDLE ||
-                interfaceTexture->desc.mipLevels == 0 ||
-                interfaceTexture->desc.arraySize == 0) {
-                fprintf(stderr, "Ignoring invalid Vulkan texture barrier (texture=%p).\n", static_cast<void *>(interfaceTexture));
+            if (!isLiveVulkanTexture(interfaceTexture)) {
+                fprintf(stderr, "Ignoring Vulkan texture barrier for a dead wrapper (texture=%p).\n",
+                    static_cast<void *>(interfaceTexture));
+                continue;
+            }
+            if (interfaceTexture->vk == VK_NULL_HANDLE) {
+                fprintf(stderr, "Ignoring Vulkan texture barrier with no VkImage (texture=%p).\n",
+                    static_cast<void *>(interfaceTexture));
+                continue;
+            }
+            if (interfaceTexture->desc.mipLevels == 0 || interfaceTexture->desc.arraySize == 0) {
+                fprintf(stderr, "Ignoring Vulkan texture barrier with invalid range (texture=%p, mips=%u, layers=%u).\n",
+                    static_cast<void *>(interfaceTexture), interfaceTexture->desc.mipLevels,
+                    interfaceTexture->desc.arraySize);
                 continue;
             }
 

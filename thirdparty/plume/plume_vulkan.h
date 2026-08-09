@@ -91,9 +91,13 @@ namespace plume {
         bool ownership = false;
         RenderTextureDesc desc;
 
-        VulkanTexture() = default;
+        VulkanTexture();
         VulkanTexture(VulkanDevice *device, VulkanPool *pool, const RenderTextureDesc &desc);
         VulkanTexture(VulkanDevice *device, VkImage image);
+        VulkanTexture(const VulkanTexture &) = delete;
+        VulkanTexture &operator=(const VulkanTexture &) = delete;
+        VulkanTexture(VulkanTexture &&other) noexcept;
+        VulkanTexture &operator=(VulkanTexture &&other) noexcept;
         ~VulkanTexture() override;
         void createImageView(VkFormat format);
         std::unique_ptr<RenderTextureView> createTextureView(const RenderTextureViewDesc &desc) const override;
