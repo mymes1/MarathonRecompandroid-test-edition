@@ -6,3 +6,4 @@
 - [Mali upload queue ownership](mali-upload-queue.md) — staged vertex/index copies need graphics-queue synchronization when Mali upload heaps are disabled.
 - [Vertex stream stride width](vertex-stream-stride.md) — preserve full 32-bit D3D stream strides; 8-bit truncation can cause title/game geometry to stretch and morph.
 - [Android APK packaging checks](android-apk-packaging.md) — Gradle strips packaged native libraries; compare staged output directly and validate APK ELF ABI/signature separately.
+- [Mali image barrier validation](mali-image-barriers.md) — validate Vulkan texture wrapper lifetime, image handles, ranges, and aspects before vkCmdPipelineBarrier on Android Mali.

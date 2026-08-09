@@ -914,7 +914,10 @@ static ankerl::unordered_dense::map<RenderTexture*, RenderTextureLayout> g_barri
 
 static void AddBarrier(GuestBaseTexture* texture, RenderTextureLayout layout)
 {
-    if (texture != nullptr && texture->layout != layout)
+    // A guest object can outlive a failed native texture creation.  Never
+    // place its null RenderTexture handle in the barrier map: the Vulkan
+    // backend cannot turn that into a valid VkImageMemoryBarrier.
+    if (texture != nullptr && texture->texture != nullptr && texture->layout != layout)
     {
         g_barrierMap[texture->texture] = layout;
         texture->layout = layout;

@@ -40,6 +40,23 @@ extern "C" void *AndroidGetCustomVulkanLoader();
 namespace plume {
     // Backend constants.
 
+    // Keep a registry of wrapper addresses so barrier submission can reject a
+    // stale RenderTexture pointer without dereferencing it first.  This is
+    // particularly important on Android: a vendor driver may crash while
+    // consuming an invalid VkImageMemoryBarrier instead of returning a
+    // validation error.
+    static std::mutex g_liveVulkanTexturesMutex;
+    static std::unordered_set<const VulkanTexture *> g_liveVulkanTextures;
+
+    static bool isLiveVulkanTexture(const VulkanTexture *texture) {
+        if (texture == nullptr) {
+            return false;
+        }
+
+        std::lock_guard lock(g_liveVulkanTexturesMutex);
+        return g_liveVulkanTextures.find(texture) != g_liveVulkanTextures.end();
+    }
+
     // Required buffer alignment for acceleration structures.
     static const uint64_t AccelerationStructureBufferAlignment = 256;
 
@@ -1092,6 +1109,11 @@ namespace plume {
     VulkanTexture::VulkanTexture(VulkanDevice *device, VulkanPool *pool, const RenderTextureDesc &desc) {
         assert(device != nullptr);
 
+        {
+            std::lock_guard lock(g_liveVulkanTexturesMutex);
+            g_liveVulkanTextures.insert(this);
+        }
+
         this->device = device;
         this->pool = pool;
         this->desc = desc;
@@ -1147,11 +1169,21 @@ namespace plume {
         assert(device != nullptr);
         assert(image != VK_NULL_HANDLE);
 
+        {
+            std::lock_guard lock(g_liveVulkanTexturesMutex);
+            g_liveVulkanTextures.insert(this);
+        }
+
         this->device = device;
         vk = image;
     }
 
     VulkanTexture::~VulkanTexture() {
+        {
+            std::lock_guard lock(g_liveVulkanTexturesMutex);
+            g_liveVulkanTextures.erase(this);
+        }
+
         if (imageView != VK_NULL_HANDLE) {
             vkDestroyImageView(device->vk, imageView, nullptr);
         }
@@ -3055,6 +3087,23 @@ namespace plume {
         for (uint32_t i = 0; i < textureBarriersCount; i++) {
             const RenderTextureBarrier &textureBarrier = textureBarriers[i];
             VulkanTexture *interfaceTexture = static_cast<VulkanTexture *>(textureBarrier.texture);
+            if (!isLiveVulkanTexture(interfaceTexture) ||
+                interfaceTexture->vk == VK_NULL_HANDLE ||
+                interfaceTexture->desc.mipLevels == 0 ||
+                interfaceTexture->desc.arraySize == 0) {
+                fprintf(stderr, "Ignoring invalid Vulkan texture barrier (texture=%p).\n", static_cast<void *>(interfaceTexture));
+                continue;
+            }
+
+            const VkImageAspectFlags aspectMask =
+                toAspectFlags(interfaceTexture->desc.format, interfaceTexture->desc.flags);
+            if ((aspectMask & (VK_IMAGE_ASPECT_COLOR_BIT |
+                               VK_IMAGE_ASPECT_DEPTH_BIT |
+                               VK_IMAGE_ASPECT_STENCIL_BIT)) == 0) {
+                fprintf(stderr, "Ignoring Vulkan texture barrier with no valid aspect (texture=%p).\n", static_cast<void *>(interfaceTexture));
+                continue;
+            }
+
             VkImageMemoryBarrier imageMemoryBarrier = {};
             imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
             imageMemoryBarrier.image = interfaceTexture->vk;
@@ -3072,9 +3121,11 @@ namespace plume {
             imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             imageMemoryBarrier.oldLayout = toImageLayout(interfaceTexture->textureLayout);
             imageMemoryBarrier.newLayout = toImageLayout(textureBarrier.layout);
+            imageMemoryBarrier.subresourceRange.baseMipLevel = 0;
             imageMemoryBarrier.subresourceRange.levelCount = interfaceTexture->desc.mipLevels;
+            imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;
             imageMemoryBarrier.subresourceRange.layerCount = interfaceTexture->desc.arraySize;
-            imageMemoryBarrier.subresourceRange.aspectMask = toAspectFlags(interfaceTexture->desc.format, interfaceTexture->desc.flags);
+            imageMemoryBarrier.subresourceRange.aspectMask = aspectMask;
             imageMemoryBarriers.emplace_back(imageMemoryBarrier);
             srcStageMask |= previousStageMask;
             interfaceTexture->textureLayout = textureBarrier.layout;
