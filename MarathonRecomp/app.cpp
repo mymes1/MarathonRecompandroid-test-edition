@@ -99,6 +99,13 @@ PPC_FUNC(sub_825EA610)
 
     Video::WaitOnSwapChain();
 
+    // The original game simulation is a fixed 60 Hz simulation.  Its variable
+    // frame path is intended for the high-FPS patches and is not safe for the
+    // Android build: the 30 FPS profile made the game visibly run below normal
+    // speed, and a stale saved FPS value could keep selecting that path.
+#ifdef __ANDROID__
+    ctx.f1.f64 = 1.0 / 60.0;
+#else
     // Correct small delta time errors.
     if (Config::FPS >= FPS_MIN && Config::FPS < FPS_MAX)
     {
@@ -107,6 +114,7 @@ PPC_FUNC(sub_825EA610)
         if (abs(ctx.f1.f64 - targetDeltaTime) < 0.00001)
             ctx.f1.f64 = targetDeltaTime;
     }
+#endif
 
     App::s_deltaTime = ctx.f1.f64;
     App::s_time += App::s_deltaTime;
@@ -127,8 +135,13 @@ PPC_FUNC(sub_825EA610)
         GameWindow::Update();
     }
 
-    // Allow variable FPS when config is not 60 FPS.
+    // Keep Android on the game's original fixed-rate simulation path.  On
+    // desktop this flag enables the existing high-FPS compatibility patches.
+#ifdef __ANDROID__
+    App::s_pApp->m_pDoc->m_VFrame = false;
+#else
     App::s_pApp->m_pDoc->m_VFrame = Config::FPS != 60;
+#endif
 
     AudioPatches::Update(App::s_deltaTime);
 

@@ -73,11 +73,7 @@ CONFIG_DEFINE_LOCALISED("Video", float, ResolutionScale, 1.0f, false);
 CONFIG_DEFINE_LOCALISED("Video", bool, Fullscreen, true, false);
 CONFIG_DEFINE_LOCALISED("Video", bool, VSync, true, false);
 CONFIG_DEFINE_ENUM("Video", ETripleBuffering, TripleBuffering, ETripleBuffering::Auto, false);
-#ifdef __ANDROID__
-CONFIG_DEFINE_LOCALISED("Video", int32_t, FPS, 30, false);
-#else
 CONFIG_DEFINE_LOCALISED("Video", int32_t, FPS, 60, false);
-#endif
 CONFIG_DEFINE("Video", bool, ShowFPS, false, false);
 // Android-only: initial visibility of the profiler overlay (there is no F1 key on
 // Android; it is toggled from the in-game Video menu, and closing the overlay

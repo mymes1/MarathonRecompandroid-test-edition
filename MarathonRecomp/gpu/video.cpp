@@ -2054,6 +2054,17 @@ static void ApplyLowEndDefaults()
     bool changed = false;
 
 #ifdef __ANDROID__
+    // The original game simulation is fixed at 60 Hz.  Older Android builds
+    // defaulted to 30 FPS and saved that value, which also enabled the game's
+    // variable-frame path and made gameplay run below normal speed.  Keep the
+    // renderer and simulation on the same 60 Hz reference until the Android
+    // variable-frame path is fully validated.
+    if (Config::FPS != 60)
+    {
+        Config::FPS = 60;
+        changed = true;
+    }
+
     // Mobile GPUs are generally UMA and report either zero dedicated VRAM or a
     // very small budget. Keep the first-run profile conservative: these settings
     // remove several full-screen/large render-target costs without changing game
@@ -2817,15 +2828,28 @@ static void ProcDestructResource(const RenderCommand& cmd)
     g_tempResources[g_frame].push_back(args.resource);
 }
 
-static uint32_t ComputeTexturePitch(GuestTexture* texture)
+static uint32_t ComputeTexturePitch(const GuestTexture* texture)
 {
-    return (texture->width * RenderFormatSize(texture->format) + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
+    // RenderFormatSize() is the size of one texel for ordinary formats, but
+    // the size of one 4x4 block for BC/ETC formats.  A lock buffer must use
+    // the same block geometry as VkBufferImageCopy; multiplying the raw
+    // texture width by the block size makes compressed rows too wide.
+    const uint32_t blockWidth = RenderFormatBlockWidth(texture->format);
+    const uint32_t blocksWide = (texture->width + blockWidth - 1) / blockWidth;
+    const uint32_t rowBytes = blocksWide * RenderFormatSize(texture->format);
+    return (rowBytes + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
+}
+
+static uint32_t ComputeTextureRowCount(const GuestTexture* texture)
+{
+    const uint32_t blockHeight = RenderFormatBlockHeight(texture->format);
+    return (texture->height + blockHeight - 1) / blockHeight;
 }
 
 static void LockTextureRect(GuestTexture* texture, uint32_t, GuestLockedRect* lockedRect) 
 {
     uint32_t pitch = ComputeTexturePitch(texture);
-    uint32_t slicePitch = pitch * texture->height;
+    uint32_t slicePitch = pitch * ComputeTextureRowCount(texture);
 
     if (texture->mappedMemory == nullptr)
         texture->mappedMemory = g_userHeap.AllocPhysical(slicePitch, 0x10);
@@ -2852,14 +2876,16 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
     FlushBarriers();
 
     uint32_t pitch = ComputeTexturePitch(args.texture);
-    uint32_t slicePitch = pitch * args.texture->height;
+    uint32_t slicePitch = pitch * ComputeTextureRowCount(args.texture);
 
     auto allocation = g_uploadAllocators[g_frame].allocate(slicePitch, g_uploadPlacementAlignment);
     memcpy(allocation.memory, args.texture->mappedMemory, slicePitch);
 
+    const uint32_t blockWidth = RenderFormatBlockWidth(args.texture->format);
+    const uint32_t rowWidth = (pitch / RenderFormatSize(args.texture->format)) * blockWidth;
     g_commandLists[g_frame]->copyTextureRegion(
         RenderTextureCopyLocation::Subresource(args.texture->texture, 0),
-        RenderTextureCopyLocation::PlacedFootprint(allocation.buffer, args.texture->format, args.texture->width, args.texture->height, 1, pitch / RenderFormatSize(args.texture->format), allocation.offset));
+        RenderTextureCopyLocation::PlacedFootprint(allocation.buffer, args.texture->format, args.texture->width, args.texture->height, 1, rowWidth, allocation.offset));
 }
 
 static void* LockBuffer(GuestBuffer* buffer, uint32_t flags)
