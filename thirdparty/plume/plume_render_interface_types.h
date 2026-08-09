@@ -1163,6 +1163,7 @@ namespace plume {
                 uint32_t height;
                 uint32_t depth;
                 uint32_t rowWidth;
+                uint32_t rowCount;
                 uint64_t offset;
             } placedFootprint;
 
@@ -1172,7 +1173,7 @@ namespace plume {
             } subresource;
         };
 
-        static RenderTextureCopyLocation PlacedFootprint(const RenderBuffer *buffer, RenderFormat format, uint32_t width, uint32_t height, uint32_t depth, uint32_t rowWidth, uint64_t offset = 0) {
+        static RenderTextureCopyLocation PlacedFootprint(const RenderBuffer *buffer, RenderFormat format, uint32_t width, uint32_t height, uint32_t depth, uint32_t rowWidth, uint64_t offset = 0, uint32_t rowCount = 0) {
             RenderTextureCopyLocation loc;
             loc.buffer = buffer;
             loc.type = RenderTextureCopyType::PLACED_FOOTPRINT;
@@ -1181,6 +1182,8 @@ namespace plume {
             loc.placedFootprint.height = height;
             loc.placedFootprint.depth = depth;
             loc.placedFootprint.rowWidth = rowWidth;
+            loc.placedFootprint.rowCount = rowCount != 0 ? rowCount :
+                (height + RenderFormatBlockHeight(format) - 1) / RenderFormatBlockHeight(format);
             loc.placedFootprint.offset = offset;
             return loc;
         }

@@ -1,0 +1,356 @@
+[    0.068][t2722][warn][*] OS does not support registry.
+[    0.074][t2722][logger] Marathon Recomp log started
+[    0.074][t2722][build] === APK VERSION: 1.0.0 ===
+[    0.074][t2722][build] ANDROID_BUILD_ID=1.0.0-release
+[    0.074][t2722][device] device=SM-X110 brand=samsung soc=MT8781V/NA android=15 sdk=35 vulkan_hal=mali egl_hal=meow abi=arm64-v8a ram_mb=3740
+[    0.076][t2722][warn][*] Host Startup
+[    0.259][t2722][XAudioInitializeSystem] SDL audio driver: "openslES".
+[    0.303][t2722][*] Audio device opened: freq 48000, channels 2, samples 1024 (requested 1024)
+[    0.332][t2722][*] SDL video driver: "Android"
+[    0.366][t2722][AndroidGetCustomVulkanLoader] Android Vulkan driver mode: Auto.
+[    0.366][t2722][warn][AndroidGetCustomVulkanLoader] Detected non-Adreno GPU ("mali/meow"): the bundled Turnip driver is Adreno-only, using the system Vulkan driver.
+[    0.375][t2722][CreateHostDevice] Mali compatibility path: using CPU RGBA texture fallback.
+[    0.375][t2722][warn][CreateHostDevice] BC texture formats are unsupported by this device. Textures will be decompressed on the CPU at load time, increasing memory usage.
+[    0.375][t2722][warn][CreateHostDevice] Mali compatibility path: limiting bindless texture descriptors to 1024 to prevent libGLES_mali shader compiler crash.
+[    0.375][t2722][CreateHostDevice] Mali compatibility path: conservative Vulkan capabilities enabled.
+[    0.375][t2722][CreateHostDevice] Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.
+[    0.375][t2722][warn][CreateHostDevice] Descriptor set sizes clamped to device limits: 1024 textures, 1024 samplers.
+[    0.375][t2722][CreateHostDevice] CreateHostDevice: loading embedded shader cache.
+[    0.387][t2722][CreateHostDevice] CreateHostDevice: embedded shader cache loaded.
+[    0.593][t2722][android] swapchain (re)created successfully
+[    0.593][t2722][warn][*] Start Guest Thread
+[    0.593][t2722][warn][*] /storage/emulated/0/Android/data/com.sega.marathon/files/MarathonRecomp/game/default.xex
+[    0.594][t2722][*] Changed resolution: 1340x800
+[    0.594][t2722][NetDll_WSAStartup] !!! STUB !!!
+[    0.594][t2722][warn][CreateDevice] 0x0 0x1 0x0 0x1 0xa0a60 0x1000a0a5c
+
+[    0.617][t2722][*] Loading file: archives/system.arc
+[    0.617][t2722][Game] Loading file: "game:\xenon\archives\system.arc"
+[    0.617][t2722][*] Loading file: archives/sprite.arc
+[    0.617][t2722][Game] Loading file: "game:\win32\archives\sprite.arc"
+[    0.617][t2722][*] Loading file: archives/cache.arc
+[    0.617][t2722][Game] Loading file: "game:\xenon\archives\cache.arc"
+[    0.618][t2722][*] Loading file: archives/particle_data.arc
+[    0.618][t2722][Game] Loading file: "game:\win32\archives\particle_data.arc"
+[    0.628][t2722][*] Loading file: archives/shader.arc
+[    0.628][t2722][Game] Loading file: "game:\xenon\archives\shader.arc"
+[    0.631][t2722][*] Loading file: 
+[    0.631][t2722][ExRegisterTitleTerminateNotification] !!! STUB !!!
+[    0.631][t2722][ExCreateThread] 0x1000A0674, 0x0, 0x0, 0x0, 0x8255B848, 0x0, 0x10000001 66D98D74
+[    0.631][t2722][ObDereferenceObject] !!! STUB !!!
+[    0.632][t2722][ExCreateThread] 0x1000A0660, 0x0, 0x1018E23F8, 0x826FE080, 0x825866A8, 0x18E23E0, 0x1 568EC251
+[    0.632][t2722][ExCreateThread] 0x1000A0660, 0x0, 0x1018E24F8, 0x826FE080, 0x825866A8, 0x18E24E0, 0x1 A304650B
+[    0.632][t2722][*] Loading file: shader/primitive/primitive.fx
+[    0.632][t2722][*] Loading file: shader/primitive/primitive.fx
+[    0.632][t2722][*] Loading file: shader/std/no_shader.fxo
+[    0.633][t2722][*] Loading file: shader/skin/no_shader.fxo
+[    0.633][t2722][*] Loading file: shader/morph/no_shader.fxo
+[    0.633][t2722][*] Loading file: shader/np/no_shader.fxo
+[    0.634][t2722][*] Loading file: shader/skin_np/no_shader.fxo
+[    0.634][t2722][*] Loading file: shader/morph_np/no_shader.fxo
+[    0.634][t2722][*] Loading file: shader/lm/no_shader.fxo
+[    0.634][t2722][*] Loading file: shader/lm_np/no_shader.fxo
+[    0.635][t2722][*] Loading file: shader/primitive/rt_restoration.fx
+[    0.635][t2722][*] Loading file: shader/primitive/csd.fx
+[    0.636][t2722][*] Loading file: 
+[    0.636][t2722][*] Loading file: shader/Common.fx
+[    0.636][t2722][*] Loading file: shader/filter/BloomFilter.fx
+[    0.636][t2722][*] Loading file: shader/filter/BurnoutBlurFilter.fx
+[    0.637][t2722][*] Loading file: shader/filter/ColorCopyFilter.fx
+[    0.637][t2722][*] Loading file: shader/filter/ColorCorrectionFilter.fx
+[    0.637][t2722][*] Loading file: shader/filter/ColorOutFilter.fx
+[    0.637][t2722][*] Loading file: shader/filter/CopyFilter.fx
+[    0.637][t2722][*] Loading file: shader/filter/DepthOfFieldFilter.fx
+[    0.638][t2722][*] Loading file: shader/filter/MaskCopyFilter.fx
+[    0.638][t2722][*] Loading file: shader/filter/MotionBlurFilter.fx
+[    0.638][t2722][*] Loading file: shader/filter/PhaseShiftFilter.fx
+[    0.639][t2722][*] Loading file: shader/filter/SampleFilter.fx
+[    0.640][t2722][*] Loading file: shader/primitive/AcrobataPrimitive.fx
+[    0.684][t2722][*] Loading file: particle/pe/sonicnext
+[    0.685][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.686][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.687][t2722][*] Loading file: shader/std/pe.fxo
+[    0.688][t2722][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8DB8, 0x826FE080, 0x825866A8, 0x1FC8DA0, 0x1 B3B13B4A
+[    0.688][t2722][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8E38, 0x826FE080, 0x825866A8, 0x1FC8E20, 0x1 1649E948
+[    0.688][t2722][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8EB8, 0x826FE080, 0x825866A8, 0x1FC8EA0, 0x1 FC067023
+[    0.688][t2722][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8F38, 0x826FE080, 0x825866A8, 0x1FC8F20, 0x1 74B9C573
+[    0.688][t2722][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8FB8, 0x826FE080, 0x825866A8, 0x1FC8FA0, 0x1 7213EC6D
+[    0.688][t2722][ExCreateThread] 0x1000A0760, 0x0, 0x101FC9038, 0x826FE080, 0x825866A8, 0x1FC9020, 0x1 305C4012
+[    0.688][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9238, 0x826FE080, 0x825866A8, 0x1FC9220, 0x1 7A48AF3E
+[    0.688][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC92B8, 0x826FE080, 0x825866A8, 0x1FC92A0, 0x1 F62FF2F3
+[    0.688][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9338, 0x826FE080, 0x825866A8, 0x1FC9320, 0x1 D0B11265
+[    0.688][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC93B8, 0x826FE080, 0x825866A8, 0x1FC93A0, 0x1 6FDBCE97
+[    0.688][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9438, 0x826FE080, 0x825866A8, 0x1FC9420, 0x1 814A817C
+[    0.688][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC95B8, 0x826FE080, 0x825866A8, 0x1FC95A0, 0x1 EA2387BD
+[    0.688][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9638, 0x826FE080, 0x825866A8, 0x1FC9620, 0x1 907C177D
+[    0.688][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC96B8, 0x826FE080, 0x825866A8, 0x1FC96A0, 0x1 5AB28CBF
+[    0.689][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9738, 0x826FE080, 0x825866A8, 0x1FC9720, 0x1 63BAF050
+[    0.689][t2722][ExCreateThread] 0x1000A0750, 0x0, 0x101FC97B8, 0x826FE080, 0x825866A8, 0x1FC97A0, 0x1 A2E06B32
+[    0.689][t2722][*] Loading file: scripts/render/render_default.lua
+[    0.689][t2722][*] Loading file: sprite/loading/loading_english
+[    0.690][t2722][*] CSD freed: 0x101FB8C60
+[    0.690][t2722][*] CSD loaded: sprite/loading/loading_english (0x101FD6E60)
+[    0.690][t2722][*] CSD modifier(s) redirected: sprite/loading/loading
+[    0.691][t2722][ExCreateThread] 0x1000A0920, 0x0, 0x101FBBBF8, 0x826FE080, 0x825866A8, 0x1FBBBE0, 0x1 B087F39B
+[    0.691][t2722][*] Loading file: 
+[    0.691][t2722][*] Loading file: archives/cache.arc
+[    0.691][t2722][*] Loading file: archives/enemy.arc
+[    0.691][t2722][Game] Loading file: "game:\xenon\archives\enemy.arc"
+[    0.691][t2722][*] Loading file: archives/event.arc
+[    0.691][t2722][Game] Loading file: "game:\xenon\archives\event.arc"
+[    0.691][t2722][*] Loading file: archives/game.arc
+[    0.691][t2722][Game] Loading file: "game:\xenon\archives\game.arc"
+[    0.691][t2722][*] Loading file: archives/human.arc
+[    0.691][t2722][Game] Loading file: "game:\xenon\archives\human.arc"
+[    0.692][t2722][*] Loading file: archives/object.arc
+[    0.692][t2722][Game] Loading file: "game:\xenon\archives\object.arc"
+[    0.693][t2722][*] Loading file: archives/particle.arc
+[    0.693][t2722][Game] Loading file: "game:\xenon\archives\particle.arc"
+[    0.693][t2722][*] Loading file: archives/scripts.arc
+[    0.693][t2722][Game] Loading file: "game:\xenon\archives\scripts.arc"
+[    0.693][t2722][*] Loading file: archives/sound.arc
+[    0.693][t2722][Game] Loading file: "game:\xenon\archives\sound.arc"
+[    0.694][t2722][*] Loading file: archives/stage.arc
+[    0.694][t2722][Game] Loading file: "game:\xenon\archives\stage.arc"
+[    0.694][t2722][*] Loading file: archives/text.arc
+[    0.694][t2722][Game] Loading file: "game:\xenon\archives\text.arc"
+[    0.694][t2722][*] Loading file: archives/player.arc
+[    0.694][t2722][Game] Loading file: "game:\xenon\archives\player.arc"
+[    0.698][t2722][*] Loading file: archives/enemy_data.arc
+[    0.698][t2722][Game] Loading file: "game:\win32\archives\enemy_data.arc"
+[    0.699][t2722][*] Loading file: archives/event_data.arc
+[    0.699][t2722][Game] Loading file: "game:\win32\archives\event_data.arc"
+[    0.699][t2722][*] Loading file: archives/particle_data.arc
+[    0.699][t2722][*] Loading file: archives/player_amy.arc
+[    0.699][t2722][Game] Loading file: "game:\win32\archives\player_amy.arc"
+[    0.699][t2722][*] Loading file: archives/player_blaze.arc
+[    0.699][t2722][Game] Loading file: "game:\win32\archives\player_blaze.arc"
+[    0.699][t2722][*] Loading file: archives/player_common.arc
+[    0.699][t2722][Game] Loading file: "game:\win32\archives\player_common.arc"
+[    0.699][t2722][*] Loading file: archives/player_knuckles.arc
+[    0.699][t2722][Game] Loading file: "game:\win32\archives\player_knuckles.arc"
+[    0.699][t2722][*] Loading file: archives/player_omega.arc
+[    0.699][t2722][Game] Loading file: "game:\win32\archives\player_omega.arc"
+[    0.699][t2722][*] Loading file: archives/player_princess.arc
+[    0.699][t2722][Game] Loading file: "game:\win32\archives\player_princess.arc"
+[    0.700][t2722][*] Loading file: archives/player_rouge.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\player_rouge.arc"
+[    0.700][t2722][*] Loading file: archives/player_shadow.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\player_shadow.arc"
+[    0.700][t2722][*] Loading file: archives/player_silver.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\player_silver.arc"
+[    0.700][t2722][*] Loading file: archives/player_sonic.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\player_sonic.arc"
+[    0.700][t2722][*] Loading file: archives/player_supershadow.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\player_supershadow.arc"
+[    0.700][t2722][*] Loading file: archives/player_supersilver.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\player_supersilver.arc"
+[    0.700][t2722][*] Loading file: archives/player_supersonic.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\player_supersonic.arc"
+[    0.700][t2722][*] Loading file: archives/player_tails.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\player_tails.arc"
+[    0.700][t2722][*] Loading file: archives/radarmap.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\radarmap.arc"
+[    0.700][t2722][*] Loading file: archives/sprite.arc
+[    0.700][t2722][*] Loading file: archives/stage_aqa_a.arc
+[    0.700][t2722][Game] Loading file: "game:\win32\archives\stage_aqa_a.arc"
+[    0.700][t2722][*] Loading file: archives/stage_aqa_b.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_aqa_b.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_dr1_dtd.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_dr1_dtd.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_dr1_wap.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_dr1_wap.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_dr2.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_dr2.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_dr3.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_dr3.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_iblis02.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_iblis02.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_iblis03.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_iblis03.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_mefi01.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_mefi01.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_mefi02.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_mefi02.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_rct.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_rct.arc"
+[    0.701][t2722][*] Loading file: archives/stage_boss_solaris.arc
+[    0.701][t2722][Game] Loading file: "game:\win32\archives\stage_boss_solaris.arc"
+[    0.701][t2722][*] Loading file: archives/stage_csc_a.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_csc_a.arc"
+[    0.702][t2722][*] Loading file: archives/stage_csc_b.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_csc_b.arc"
+[    0.702][t2722][*] Loading file: archives/stage_csc_c.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_csc_c.arc"
+[    0.702][t2722][*] Loading file: archives/stage_csc_e.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_csc_e.arc"
+[    0.702][t2722][*] Loading file: archives/stage_csc_f.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_csc_f.arc"
+[    0.702][t2722][*] Loading file: archives/stage_csc_iblis01.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_csc_iblis01.arc"
+[    0.702][t2722][*] Loading file: archives/stage_dtd_a.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_dtd_a.arc"
+[    0.702][t2722][*] Loading file: archives/stage_dtd_b.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_dtd_b.arc"
+[    0.702][t2722][*] Loading file: archives/stage_e0003.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_e0003.arc"
+[    0.702][t2722][*] Loading file: archives/stage_e0009.arc
+[    0.702][t2722][Game] Loading file: "game:\win32\archives\stage_e0009.arc"
+[    0.703][t2722][*] Loading file: archives/stage_e0010.arc
+[    0.703][t2722][Game] Loading file: "game:\win32\archives\stage_e0010.arc"
+[    0.703][t2722][*] Loading file: archives/stage_e0012.arc
+[    0.703][t2722][Game] Loading file: "game:\win32\archives\stage_e0012.arc"
+[    0.703][t2722][*] Loading file: archives/stage_e0021.arc
+[    0.703][t2722][Game] Loading file: "game:\win32\archives\stage_e0021.arc"
+[    0.703][t2722][*] Loading file: archives/stage_e0022.arc
+[    0.703][t2722][Game] Loading file: "game:\win32\archives\stage_e0022.arc"
+[    0.704][t2722][*] Loading file: archives/stage_e0023.arc
+[    0.704][t2722][Game] Loading file: "game:\win32\archives\stage_e0023.arc"
+[    0.704][t2722][*] Loading file: archives/stage_e0026.arc
+[    0.704][t2722][Game] Loading file: "game:\win32\archives\stage_e0026.arc"
+[    0.705][t2722][*] Loading file: archives/stage_e0028.arc
+[    0.705][t2722][Game] Loading file: "game:\win32\archives\stage_e0028.arc"
+[    0.705][t2722][*] Loading file: archives/stage_e0031.arc
+[    0.706][t2722][Game] Loading file: "game:\win32\archives\stage_e0031.arc"
+[    0.707][t2722][*] Loading file: archives/stage_e0104.arc
+[    0.707][t2722][Game] Loading file: "game:\win32\archives\stage_e0104.arc"
+[    0.707][t2722][*] Loading file: archives/stage_e0105.arc
+[    0.707][t2722][Game] Loading file: "game:\win32\archives\stage_e0105.arc"
+[    0.707][t2722][*] Loading file: archives/stage_e0106.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_e0106.arc"
+[    0.708][t2722][*] Loading file: archives/stage_e0120.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_e0120.arc"
+[    0.708][t2722][*] Loading file: archives/stage_e0125.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_e0125.arc"
+[    0.708][t2722][*] Loading file: archives/stage_e0206.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_e0206.arc"
+[    0.708][t2722][*] Loading file: archives/stage_e0214.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_e0214.arc"
+[    0.708][t2722][*] Loading file: archives/stage_e0216.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_e0216.arc"
+[    0.708][t2722][*] Loading file: archives/stage_e0221.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_e0221.arc"
+[    0.708][t2722][*] Loading file: archives/stage_e0304.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_e0304.arc"
+[    0.708][t2722][*] Loading file: archives/stage_flc_a.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_flc_a.arc"
+[    0.708][t2722][*] Loading file: archives/stage_flc_b.arc
+[    0.708][t2722][Game] Loading file: "game:\win32\archives\stage_flc_b.arc"
+[    0.709][t2722][*] Loading file: archives/stage_kdv_a.arc
+[    0.709][t2722][Game] Loading file: "game:\win32\archives\stage_kdv_a.arc"
+[    0.709][t2722][*] Loading file: archives/stage_kdv_b.arc
+[    0.709][t2722][Game] Loading file: "game:\win32\archives\stage_kdv_b.arc"
+[    0.709][t2722][*] Loading file: archives/stage_kdv_c.arc
+[    0.709][t2722][Game] Loading file: "game:\win32\archives\stage_kdv_c.arc"
+[    0.709][t2722][*] Loading file: archives/stage_kdv_d.arc
+[    0.709][t2722][Game] Loading file: "game:\win32\archives\stage_kdv_d.arc"
+[    0.709][t2722][*] Loading file: archives/stage_rct_a.arc
+[    0.709][t2722][Game] Loading file: "game:\win32\archives\stage_rct_a.arc"
+[    0.709][t2722][*] Loading file: archives/stage_rct_b.arc
+[    0.709][t2722][Game] Loading file: "game:\win32\archives\stage_rct_b.arc"
+[    0.709][t2722][*] Loading file: archives/stage_tpj_a.arc
+[    0.709][t2722][Game] Loading file: "game:\win32\archives\stage_tpj_a.arc"
+[    0.709][t2722][*] Loading file: archives/stage_tpj_b.arc
+[    0.709][t2722][Game] Loading file: "game:\win32\archives\stage_tpj_b.arc"
+[    0.709][t2722][*] Loading file: archives/stage_tpj_c.arc
+[    0.709][t2722][Game] Loading file: "game:\win32\archives\stage_tpj_c.arc"
+[    0.709][t2722][*] Loading file: archives/stage_twn_a.arc
+[    0.710][t2722][Game] Loading file: "game:\win32\archives\stage_twn_a.arc"
+[    0.710][t2722][*] Loading file: archives/stage_twn_b.arc
+[    0.710][t2722][Game] Loading file: "game:\win32\archives\stage_twn_b.arc"
+[    0.710][t2722][*] Loading file: archives/stage_twn_c.arc
+[    0.710][t2722][Game] Loading file: "game:\win32\archives\stage_twn_c.arc"
+[    0.710][t2722][*] Loading file: archives/stage_twn_d.arc
+[    0.710][t2722][Game] Loading file: "game:\win32\archives\stage_twn_d.arc"
+[    0.710][t2722][*] Loading file: archives/stage_wap_a.arc
+[    0.710][t2722][Game] Loading file: "game:\win32\archives\stage_wap_a.arc"
+[    0.710][t2722][*] Loading file: archives/stage_wap_b.arc
+[    0.710][t2722][Game] Loading file: "game:\win32\archives\stage_wap_b.arc"
+[    0.710][t2722][*] Loading file: archives/stage_wvo_a.arc
+[    0.710][t2722][Game] Loading file: "game:\win32\archives\stage_wvo_a.arc"
+[    0.710][t2722][*] Loading file: archives/stage_wvo_b.arc
+[    0.710][t2722][Game] Loading file: "game:\win32\archives\stage_wvo_b.arc"
+[    0.715][t2722][*] Loading file: 
+[    0.744][t2722][*] Loading file: text/fontmap.ftm
+[    0.745][t2722][*] Loading file: text/pf20_ff.pfi
+[    0.745][t2722][*] Loading file: text/picture.pft
+[    0.745][t2722][*] Loading file: text/fontpicture.dds
+[    0.746][t2722][*] Loading file: shader/primitive/font.fx
+[    0.746][t2722][*] Loading file: 
+[    0.749][t2722][*] Loading file: text/font2map.ftm
+[    0.749][t2722][*] Loading file: text/pf20_ff2.pfi
+[    0.749][t2722][*] Loading file: shader/primitive/font.fx
+[    0.749][t2722][*] Loading file: 
+[    0.751][t2722][*] Loading file: text/font3map.ftm
+[    0.751][t2722][*] Loading file: text/pf20_ff3.pfi
+[    0.751][t2722][*] Loading file: shader/primitive/font.fx
+[    0.751][t2722][*] Loading file: scripts/render/render_title.lua
+[    0.753][t2722][*] Loading file: scripts/stage/wvo/scene_wvo_a.lua
+[    0.754][t2722][*] Loading file: stage/wvo/a/wvo_envmap.dds
+[    0.775][t2722][*] Loading file: 
+[    0.775][t2722][*] Loading file: game:\common\sound\system.csb
+[    0.797][t2722][*] Loading file: 
+[    0.819][t2722][*] Loading file: shader/primitive/movieYUV420.fx
+[    0.820][t2722][Game] Loading file: "game:\xenon\sound\HD_SEGA.wmv"
+[    0.821][t2722][Game] Loading file: "game:\xenon\sound\HD_SEGA.wmv"
+[    0.822][t2722][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x827422F8, 0x207B820, 0x1 B087F39B
+[    0.822][t2722][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x82742328, 0x207B820, 0x1 61453A8E
+[    0.822][t2722][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x82742358, 0x207B820, 0x1 1900EFDE
+[    0.823][t2722][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x82742388, 0x207B820, 0x1 DA688DC2
+[    0.833][t2722][*] Movie: sound\HD_SEGA.sfd - 1280x720
+[    1.807][t2800][sub_82744840] RenderFrame
+[    1.813][t2722][*] Loading file: sprite/title/title_English
+[    1.814][t2722][*] Loading file: sprite/title/title_logo.dds
+[    1.831][t2722][*] Loading file: sprite/title/title_tex_e_01.dds
+[    1.835][t2722][*] Loading file: sprite/title/title_text.dds
+[    1.836][t2722][*] CSD freed: 0x102108660
+[    1.836][t2722][*] CSD loaded: sprite/title/title_English (0x10207D2A0)
+[    1.836][t2722][*] CSD modifier(s) redirected: sprite/title/title
+[    1.836][t2722][*] Loading file: text/english/msg_system.e.mst
+[    1.855][t2722][*] Loading file: shader/primitive/movieYUV420.fx
+[    1.856][t2722][Game] Loading file: "game:\xenon\sound\title_loop_GBn.wmv"
+[    1.860][t2722][Game] Loading file: "game:\xenon\sound\title_loop_GBn.wmv"
+[    1.864][t2722][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x827422F8, 0x2083560, 0x1 B087F39B
+[    1.864][t2722][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x82742328, 0x2083560, 0x1 C8FEC8D1
+[    1.864][t2722][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x82742358, 0x2083560, 0x1 71E309F9
+[    1.864][t2722][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x82742388, 0x2083560, 0x1 B7EDAAC9
+[    1.870][t2722][*] Movie: sound\title_loop_GBn.wmv - 1280x720
+[    4.237][t2560][*] Saving configuration...

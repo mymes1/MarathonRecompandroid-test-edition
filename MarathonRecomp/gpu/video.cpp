@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstring>
 #include <decompressor.h>
+#include <limits>
 #include <kernel/function.h>
 #include <kernel/heap.h>
 #include <hid/hid.h>
@@ -380,7 +381,12 @@ static std::unique_ptr<RenderQueryPool> g_queryPools[NUM_FRAMES];
 static bool g_commandListStates[NUM_FRAMES];
 
 static Mutex g_copyMutex;
-static std::unique_ptr<RenderCommandQueue> g_copyQueue;
+// Mali devices must not use a second virtual queue for uploads.  The stock
+// driver can expose multiple queues from the same family without providing the
+// ownership/synchronization guarantees this renderer needs between them.
+// Keep an owned queue for normal backends, but alias the direct queue on Mali.
+static RenderCommandQueue* g_copyQueue = nullptr;
+static std::unique_ptr<RenderCommandQueue> g_ownedCopyQueue;
 static std::unique_ptr<RenderCommandList> g_copyCommandList;
 static std::unique_ptr<RenderCommandFence> g_copyCommandFence;
 // These are only meaningful to the thread recording the current command list.
@@ -456,6 +462,15 @@ struct TextureDescriptorAllocator
     {
         std::lock_guard lock(mutex);
         limit = newLimit;
+    }
+
+    void reset(uint32_t newLimit)
+    {
+        std::lock_guard lock(mutex);
+        capacity = TEXTURE_DESCRIPTOR_NULL_COUNT;
+        limit = std::max(newLimit, uint32_t(TEXTURE_DESCRIPTOR_NULL_COUNT));
+        overflowWarned = false;
+        freed.clear();
     }
 
     uint32_t allocate()
@@ -2301,6 +2316,12 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     if (g_capabilities.maxSamplerDescriptors != 0)
         g_samplerDescriptorSize = uint32_t(std::min<size_t>(SAMPLER_DESCRIPTOR_SIZE, g_capabilities.maxSamplerDescriptors));
 
+    // The first three entries are permanent null-texture descriptors.  Do not
+    // create a variable-count array smaller than those entries, and never let
+    // the sampler allocator address an empty array.
+    g_textureDescriptorSize = std::max(g_textureDescriptorSize, uint32_t(TEXTURE_DESCRIPTOR_NULL_COUNT));
+    g_samplerDescriptorSize = std::max(g_samplerDescriptorSize, 1u);
+
 #if defined(__ANDROID__)
     // Mali-based devices (and the Samsung Galaxy Tab A9 family in particular) crash
     // inside libGLES_mali / the system Vulkan driver when the renderer's large
@@ -2363,7 +2384,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     // an index beyond the descriptor-set array.  This is critical on Mali
     // (SM-X110 and similar) where writing past the end of a small bindless
     // pool causes a SIGSEGV inside libGLES_mali / the system Vulkan driver.
-    g_textureDescriptorAllocator.setLimit(g_textureDescriptorSize);
+    g_textureDescriptorAllocator.reset(g_textureDescriptorSize);
 #endif
 
     if (g_textureDescriptorSize < TEXTURE_DESCRIPTOR_SIZE || g_samplerDescriptorSize < SAMPLER_DESCRIPTOR_SIZE)
@@ -2438,8 +2459,18 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     // Mali uploads on the graphics queue so the existing in-command-buffer
     // barriers establish both visibility and ordering without stalling the
     // frame or handing resources between queue families.
-    g_copyQueue = g_device->createCommandQueue(
-        g_isMali ? RenderCommandListType::DIRECT : RenderCommandListType::COPY);
+    if (g_isMali)
+    {
+        // Mali uploads are recorded on the graphics command list.  Keep the
+        // queue pointer as a non-owning alias so the normal copy-list cleanup
+        // cannot create or destroy a second queue for this path.
+        g_copyQueue = g_queue.get();
+    }
+    else
+    {
+        g_ownedCopyQueue = g_device->createCommandQueue(RenderCommandListType::COPY);
+        g_copyQueue = g_ownedCopyQueue.get();
+    }
     g_copyCommandList = g_copyQueue->createCommandList();
     g_copyCommandFence = g_device->createCommandFence();
 
@@ -2684,8 +2715,15 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     g_enhancedBurnoutBlurPSShader = std::make_unique<GuestShader>(ResourceType::PixelShader);
     g_enhancedBurnoutBlurPSShader->shader = CREATE_SHADER(enhanced_burnout_blur_ps);
 
-    g_conditionalSurveyPSShader = std::make_unique<GuestShader>(ResourceType::PixelShader);
-    g_conditionalSurveyPSShader->shader = CREATE_SHADER(conditional_survey_ps);
+    // The Mali compatibility layout intentionally omits the conditional-survey
+    // storage-buffer descriptor set.  Do not even instantiate the shader on
+    // that path: creating it still makes the system driver compile a shader
+    // that expects the disabled descriptor layout.
+    if (g_capabilities.conditionalSurvey)
+    {
+        g_conditionalSurveyPSShader = std::make_unique<GuestShader>(ResourceType::PixelShader);
+        g_conditionalSurveyPSShader->shader = CREATE_SHADER(conditional_survey_ps);
+    }
 
     CreateImGuiBackend();
 
@@ -5013,6 +5051,11 @@ static RenderShader* GetOrLinkShader(GuestShader* guestShader, uint32_t specCons
 
 static void SanitizePipelineState(PipelineState& pipelineState)
 {
+    // Conditional survey is unavailable on the Mali compatibility path and
+    // therefore has no descriptor set or shader to use.
+    if (!g_capabilities.conditionalSurvey)
+        pipelineState.enableConditionalSurvey = false;
+
     if (!pipelineState.zEnable && !pipelineState.stencilEnable)
     {
         pipelineState.depthStencilFormat = RenderFormat::UNKNOWN;
@@ -5090,7 +5133,7 @@ static std::unique_ptr<RenderPipeline> CreateGraphicsPipeline(const PipelineStat
     RenderGraphicsPipelineDesc desc;
     desc.pipelineLayout = g_pipelineLayout.get();
     desc.vertexShader = GetOrLinkShader(pipelineState.vertexShader, pipelineState.specConstants);
-    if (pipelineState.enableConditionalSurvey)
+    if (pipelineState.enableConditionalSurvey && g_capabilities.conditionalSurvey && g_conditionalSurveyPSShader != nullptr)
         desc.pixelShader = GetOrLinkShader(g_conditionalSurveyPSShader.get(), pipelineState.specConstants);
     else if (pipelineState.pixelShader != nullptr)
         desc.pixelShader = GetOrLinkShader(pipelineState.pixelShader, pipelineState.specConstants);
@@ -6980,18 +7023,30 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
             uint32_t width;
             uint32_t height;
             uint32_t depth;
-            uint32_t srcOffset;
-            uint32_t dstOffset;
+            uint64_t srcOffset;
+            uint64_t dstOffset;
             uint32_t srcRowPitch;
             uint32_t dstRowPitch;
             uint32_t rowCount;
             uint32_t dstRowCount;
         };
 
-        std::vector<Slice> slices;
-        uint32_t curSrcOffset = 0;
-        uint32_t curDstOffset = 0;
+        const RenderFormat uploadFormat =
+            bcFallback.mode == BCnFallbackMode::None ? desc.format : bcFallback.targetFormat;
+        const uint32_t uploadBlockWidth = RenderFormatBlockWidth(uploadFormat);
+        const uint32_t uploadBlockHeight = RenderFormatBlockHeight(uploadFormat);
+        const uint32_t uploadBytesPerBlock = RenderFormatSize(uploadFormat);
 
+        std::vector<Slice> slices;
+        uint64_t curDstOffset = 0;
+
+        if (ddsDesc.headerSize > dataSize)
+        {
+            LOG_ERROR("DDS header extends beyond the supplied texture data.");
+            return false;
+        }
+
+        const uint64_t sourceDataSize = dataSize - ddsDesc.headerSize;
         for (uint32_t arraySlice = 0; arraySlice < desc.arraySize; arraySlice++)
         {
             for (uint32_t mipSlice = 0; mipSlice < ddsDesc.numMips; mipSlice++)
@@ -7001,32 +7056,45 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                 slice.width = std::max(1u, ddsDesc.width >> mipSlice);
                 slice.height = std::max(1u, ddsDesc.height >> mipSlice);
                 slice.depth = std::max(1u, ddsDesc.depth >> mipSlice);
-                slice.srcOffset = curSrcOffset;
+                // ddspp's source layout is mip-chain-per-array-slice for
+                // arrays/cubemaps, but mip-volume-per-level for 3D textures.
+                // Reconstructing this with one running cursor is wrong for
+                // volume mips and can make a later upload read past the DDS
+                // payload.  Use the parser's authoritative offset instead.
+                const uint32_t ddsSlice = desc.dimension == RenderTextureDimension::TEXTURE_3D ? 0 : arraySlice;
+                slice.srcOffset = ddspp::get_offset(ddsDesc, mipSlice, ddsSlice);
                 slice.dstOffset = curDstOffset;
-                uint32_t rowPitch = ((slice.width + ddsDesc.blockWidth - 1) / ddsDesc.blockWidth) * ddsDesc.bitsPerPixelOrBlock;
+                const uint32_t sourceBlockWidth = ddsDesc.blockWidth;
+                const uint32_t sourceBlockHeight = ddsDesc.blockHeight;
+                uint32_t rowPitch = ((slice.width + sourceBlockWidth - 1) / sourceBlockWidth) * ddsDesc.bitsPerPixelOrBlock;
                 slice.srcRowPitch = (rowPitch + 7) / 8;
-                slice.rowCount = (slice.height + ddsDesc.blockHeight - 1) / ddsDesc.blockHeight;
+                slice.rowCount = (slice.height + sourceBlockHeight - 1) / sourceBlockHeight;
 
-                if (bcFallback.mode == BCnFallbackMode::Decode)
+                // Build the destination footprint from the format actually
+                // stored in the upload buffer.  In fallback mode this differs
+                // from the DDS source format (BC -> RGBA8 or ETC2/EAC).
+                const uint32_t uploadRowBytes =
+                    ((slice.width + uploadBlockWidth - 1) / uploadBlockWidth) * uploadBytesPerBlock;
+                slice.dstRowPitch = (uploadRowBytes + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
+                slice.dstRowCount = (slice.height + uploadBlockHeight - 1) / uploadBlockHeight;
+
+                const uint64_t sourceSliceSize =
+                    uint64_t(slice.srcRowPitch) * slice.rowCount * slice.depth;
+                const uint64_t destinationSliceSize =
+                    uint64_t(slice.dstRowPitch) * slice.dstRowCount * slice.depth;
+                const uint64_t destinationAllocationSize =
+                    (destinationSliceSize + g_uploadPlacementAlignment - 1) &
+                    ~(uint64_t(g_uploadPlacementAlignment) - 1);
+
+                if (slice.srcOffset > sourceDataSize ||
+                    sourceSliceSize > sourceDataSize - slice.srcOffset ||
+                    curDstOffset > std::numeric_limits<uint64_t>::max() - destinationAllocationSize)
                 {
-                    // The upload buffer holds decoded pixels instead of the source BC blocks.
-                    slice.dstRowPitch = (slice.width * bcFallback.bytesPerPixel + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
-                    slice.dstRowCount = slice.height;
-                }
-                else if (bcFallback.mode == BCnFallbackMode::Transcode)
-                {
-                    // The upload buffer holds ETC2/EAC blocks with the same 4x4 geometry.
-                    slice.dstRowPitch = (((slice.width + 3) / 4) * bcFallback.targetBlockSize + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
-                    slice.dstRowCount = slice.rowCount;
-                }
-                else
-                {
-                    slice.dstRowPitch = (slice.srcRowPitch + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
-                    slice.dstRowCount = slice.rowCount;
+                    LOGF_ERROR("DDS texture slice {}:{} exceeds source or upload bounds.", arraySlice, mipSlice);
+                    return false;
                 }
 
-                curSrcOffset += slice.srcRowPitch * slice.rowCount * slice.depth;
-                curDstOffset += (slice.dstRowPitch * slice.dstRowCount * slice.depth + g_uploadPlacementAlignment - 1) & ~(g_uploadPlacementAlignment - 1);
+                curDstOffset += destinationAllocationSize;
             }
         }
 
@@ -7045,7 +7113,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                 // always write a full 4x4 pixel area, which could otherwise run past this
                 // slice's region in the upload buffer. Transcode always decodes to 4-byte
                 // pixels since the encoders consume 32-bit pixels.
-                const uint32_t blocksX = (slice.width + 3) / 4;
+                const uint32_t blocksX = (slice.width + ddsDesc.blockWidth - 1) / ddsDesc.blockWidth;
                 const uint32_t blocksY = slice.rowCount;
                 const uint32_t pixelSize = bcFallback.mode == BCnFallbackMode::Decode ? bcFallback.bytesPerPixel : 4;
                 const uint32_t tmpPitch = blocksX * 4 * pixelSize;
@@ -7113,30 +7181,18 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                 // original BC format, or Vulkan computes the wrong row stride.
                 const RenderFormat uploadFormat =
                     bcFallback.mode == BCnFallbackMode::None ? desc.format : bcFallback.targetFormat;
+                const uint32_t uploadBytesPerBlock = RenderFormatSize(uploadFormat);
+                const uint32_t uploadBlockWidth = RenderFormatBlockWidth(uploadFormat);
 
                 for (size_t i = 0; i < slices.size(); i++)
                 {
                     auto& slice = slices[i];
 
-                    uint32_t footprintRowWidth;
-                    if (bcFallback.mode == BCnFallbackMode::Decode)
-                        footprintRowWidth = slice.dstRowPitch / bcFallback.bytesPerPixel;
-                    else if (bcFallback.mode == BCnFallbackMode::Transcode)
-                        footprintRowWidth = slice.dstRowPitch / bcFallback.targetBlockSize * 4;
-                    else
-                    {
-                        // VkBufferImageCopy::bufferRowLength is expressed in
-                        // texels, not bytes or bits.  For block-compressed
-                        // images, derive the logical row width from the
-                        // destination format's bytes per block.  The old
-                        // bits-per-pixel calculation multiplied the row by
-                        // an extra factor (for example, a 256-byte BC row
-                        // became a 1024-texel row), so the driver advanced
-                        // by the wrong amount after every row.
-                        const uint32_t destinationBlockSize = RenderFormatSize(desc.format);
-                        const uint32_t destinationBlockWidth = RenderFormatBlockWidth(desc.format);
-                        footprintRowWidth = (slice.dstRowPitch / destinationBlockSize) * destinationBlockWidth;
-                    }
+                    // Plume/Vulkan expresses rowWidth in texels.  Convert the
+                    // allocated byte pitch using the upload format, including
+                    // its block width; never use the original DDS format here.
+                    const uint32_t footprintRowWidth =
+                        (slice.dstRowPitch / uploadBytesPerBlock) * uploadBlockWidth;
 
                     ActiveCopyCommandList()->copyTextureRegion(
                         RenderTextureCopyLocation::Subresource(texture.texture, i % desc.mipLevels, i / desc.mipLevels),
@@ -7171,7 +7227,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
 
             if (rowPitch == (width * 4))
             {
-                memcpy(mappedMemory, stbImage, slicePitch);
+                memcpy(mappedMemory, stbImage, size_t(width) * height * 4);
             }
             else
             {

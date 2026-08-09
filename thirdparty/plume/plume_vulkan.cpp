@@ -905,6 +905,15 @@ namespace plume {
         bufferInfo.usage |= (desc.flags & RenderBufferFlag::ACCELERATION_STRUCTURE_SCRATCH) ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT : 0;
         bufferInfo.usage |= (desc.flags & RenderBufferFlag::ACCELERATION_STRUCTURE_INPUT) ? VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR : 0;
         bufferInfo.usage |= (desc.flags & RenderBufferFlag::SHADER_BINDING_TABLE) ? VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR : 0;
+
+        // Default vertex/index buffers receive staged uploads when the
+        // renderer cannot use a host-visible device-local heap (the Mali
+        // Android path).  A buffer must advertise TRANSFER_DST before it can
+        // be the destination of vkCmdCopyBuffer; relying on the vertex/index
+        // usage bits alone is invalid Vulkan and can produce undefined
+        // geometry fetches on strict drivers.
+        if (desc.heapType == RenderHeapType::DEFAULT)
+            bufferInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         
         // DEVICE_ADDRESSABLE is an explicit renderer contract used by the
         // upload allocator for the raw-address push-constant buffers.  It
@@ -3001,7 +3010,12 @@ namespace plume {
         const bool geometryEnabled = queue->device->capabilities.geometryShader;
         const bool rtEnabled = queue->device->capabilities.raytracing;
         VkPipelineStageFlags srcStageMask = 0;
-        VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT | toStageFlags(stages, geometryEnabled, rtEnabled);
+        // Do not include BOTTOM_OF_PIPE in the destination mask.  It does not
+        // represent a real consumer of the resource and, on some Android
+        // drivers, combining it with access masks makes the dependency look
+        // like an invalid barrier.  The requested stages already cover every
+        // actual consumer.
+        VkPipelineStageFlags dstStageMask = toStageFlags(stages, geometryEnabled, rtEnabled);
         thread_local std::vector<VkBufferMemoryBarrier> bufferMemoryBarriers;
         thread_local std::vector<VkImageMemoryBarrier> imageMemoryBarriers;
         bufferMemoryBarriers.clear();
@@ -3021,8 +3035,11 @@ namespace plume {
                 toStageFlags(previousStages, geometryEnabled, rtEnabled);
             bufferMemoryBarrier.srcAccessMask = toAccessFlags(previousStages);
             bufferMemoryBarrier.dstAccessMask = toAccessFlags(stages);
-            if (bufferMemoryBarrier.srcAccessMask == 0)
-                bufferMemoryBarrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+            // A resource with no tracked producer is initialized from
+            // TOP_OF_PIPE.  TOP_OF_PIPE has no memory accesses, so a generic
+            // MEMORY_READ/WRITE source mask is not a valid dependency there.
+            // Keep the source mask empty until a real COPY/GRAPHICS producer
+            // has been recorded.
             if (bufferMemoryBarrier.dstAccessMask == 0)
                 bufferMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
             bufferMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -3042,10 +3059,13 @@ namespace plume {
             imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
             imageMemoryBarrier.image = interfaceTexture->vk;
             const RenderBarrierStages previousStages = interfaceTexture->barrierStages;
+            const VkPipelineStageFlags previousStageMask =
+                toStageFlags(previousStages, geometryEnabled, rtEnabled);
             imageMemoryBarrier.srcAccessMask = toAccessFlags(previousStages);
             imageMemoryBarrier.dstAccessMask = toAccessFlags(stages);
-            if (imageMemoryBarrier.srcAccessMask == 0)
-                imageMemoryBarrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+            // See the buffer case above: UNKNOWN/UNDEFINED resources have no
+            // producer, and therefore must use an empty source access mask
+            // with TOP_OF_PIPE rather than a fabricated memory dependency.
             if (imageMemoryBarrier.dstAccessMask == 0)
                 imageMemoryBarrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
             imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -3056,7 +3076,7 @@ namespace plume {
             imageMemoryBarrier.subresourceRange.layerCount = interfaceTexture->desc.arraySize;
             imageMemoryBarrier.subresourceRange.aspectMask = toAspectFlags(interfaceTexture->desc.format, interfaceTexture->desc.flags);
             imageMemoryBarriers.emplace_back(imageMemoryBarrier);
-            srcStageMask |= toStageFlags(interfaceTexture->barrierStages, geometryEnabled, rtEnabled);
+            srcStageMask |= previousStageMask;
             interfaceTexture->textureLayout = textureBarrier.layout;
             interfaceTexture->barrierStages = stages;
         }
@@ -3409,24 +3429,26 @@ namespace plume {
             const uint32_t blockHeight = RenderFormatBlockHeight(footprintFormat);
             VkBufferImageCopy imageCopy = {};
             imageCopy.bufferOffset = srcLocation.placedFootprint.offset;
-            const uint32_t bufferRowLength =
-                ((srcLocation.placedFootprint.rowWidth + blockWidth - 1) / blockWidth) * blockWidth;
+            // rowWidth is expressed in texels, while the caller calculated it
+            // from the byte pitch using this same upload format.  Keep the
+            // conversion block-aware: a compressed row is measured in whole
+            // 4x4 blocks even when the mip is smaller than one block.
             const uint32_t tightRowLength =
                 ((srcLocation.placedFootprint.width + blockWidth - 1) / blockWidth) * blockWidth;
-            const uint32_t bufferImageHeight =
-                ((srcLocation.placedFootprint.height + blockHeight - 1) / blockHeight) * blockHeight;
-            const uint32_t tightImageHeight =
-                ((srcLocation.placedFootprint.height + blockHeight - 1) / blockHeight) * blockHeight;
-            // Zero is Vulkan's explicit tightly-packed form.  Compare
-            // compressed footprints using block-rounded dimensions: a 2x2 BC
-            // mip is stored as one 4x4 block, so comparing the raw 2-pixel
-            // extent would incorrectly mark a tight upload as padded.  Mali-G57
-            // Android drivers are particularly sensitive to redundant
-            // row/image lengths and can otherwise advance through every row at
-            // the wrong stride, producing the horizontal texture smearing seen
-            // on Galaxy Tab A9.
+            const uint32_t bufferRowLength =
+                std::max(srcLocation.placedFootprint.rowWidth, tightRowLength);
+            const uint32_t rowCount = srcLocation.placedFootprint.rowCount != 0 ?
+                srcLocation.placedFootprint.rowCount :
+                (srcLocation.placedFootprint.height + blockHeight - 1) / blockHeight;
+
+            // Vulkan measures bufferImageHeight in texels, while the upload
+            // allocation is packed in block rows.  Keep the row count explicit
+            // whenever the footprint is padded or block-compressed; using zero
+            // for an edge mip would make Mali infer the wrong slice stride.
+            const uint32_t tightRowCount =
+                (srcLocation.placedFootprint.height + blockHeight - 1) / blockHeight;
             imageCopy.bufferRowLength = bufferRowLength == tightRowLength ? 0 : bufferRowLength;
-            imageCopy.bufferImageHeight = bufferImageHeight == tightImageHeight ? 0 : bufferImageHeight;
+            imageCopy.bufferImageHeight = rowCount == tightRowCount ? 0 : rowCount * blockHeight;
             imageCopy.imageSubresource.aspectMask = toAspectFlags(dstTexture->desc.format, dstTexture->desc.flags);
             imageCopy.imageSubresource.baseArrayLayer = dstLocation.subresource.arrayIndex;
             imageCopy.imageSubresource.layerCount = 1;
@@ -3786,9 +3808,11 @@ namespace plume {
             return;
 
         thread_local std::vector<VkSemaphore> waitSemaphoreVector;
+        thread_local std::vector<VkPipelineStageFlags> waitStageVector;
         thread_local std::vector<VkSemaphore> signalSemaphoreVector;
         thread_local std::vector<VkCommandBuffer> commandBuffers;
         waitSemaphoreVector.clear();
+        waitStageVector.clear();
         signalSemaphoreVector.clear();
         commandBuffers.clear();
 
@@ -3818,7 +3842,13 @@ namespace plume {
         if (!waitSemaphoreVector.empty()) {
             submitInfo.pWaitSemaphores = waitSemaphoreVector.data();
             submitInfo.waitSemaphoreCount = uint32_t(waitSemaphoreVector.size());
-            submitInfo.pWaitDstStageMask = &waitStages;
+            // Vulkan requires one destination-stage mask for every wait
+            // semaphore.  Passing the address of one scalar here is an
+            // out-of-bounds read whenever a submit waits on more than one
+            // semaphore; strict Android drivers can turn that malformed
+            // submit into GPU corruption or a driver crash.
+            waitStageVector.assign(waitSemaphoreVector.size(), waitStages);
+            submitInfo.pWaitDstStageMask = waitStageVector.data();
         }
 
         if (!signalSemaphoreVector.empty()) {

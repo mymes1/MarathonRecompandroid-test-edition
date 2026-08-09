@@ -698,7 +698,8 @@ namespace plume {
             loc.PlacedFootprint.Offset = location.placedFootprint.offset;
             loc.PlacedFootprint.Footprint.Format = toDXGI(location.placedFootprint.format);
             loc.PlacedFootprint.Footprint.Width = ((location.placedFootprint.width + blockWidth - 1) / blockWidth) * blockWidth;
-            loc.PlacedFootprint.Footprint.Height = ((location.placedFootprint.height + blockWidth - 1) / blockWidth) * blockWidth;
+            const uint32_t blockHeight = RenderFormatBlockHeight(location.placedFootprint.format);
+            loc.PlacedFootprint.Footprint.Height = ((location.placedFootprint.height + blockHeight - 1) / blockHeight) * blockHeight;
             loc.PlacedFootprint.Footprint.Depth = location.placedFootprint.depth;
             loc.PlacedFootprint.Footprint.RowPitch = blockCount * RenderFormatSize(location.placedFootprint.format);
 

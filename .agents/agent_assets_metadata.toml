@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recompiled fixed debug APK"
-description = "ARM64 debug APK rebuilt after serializing Mali vertex/index uploads and preserving the existing Vulkan Mali crash safeguards."
+title = "Marathon Recomp Mali-G57 fix APK"
+description = "Fresh arm64-v8a Android 15 debug APK rebuilt with Mali-G57 synchronization, upload-footprint, descriptor, and Vulkan device-address fixes. APK archive, AArch64 ELF payload, and v2 signature were validated."
