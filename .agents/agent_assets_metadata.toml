@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Rebuilt Marathon Android APK"
-description = "Debug APK containing the Mali geometry-upload synchronization fix. ARM64 ELF, APK signature verified, and built successfully on August 9, 2026."
+title = "Marathon Recompiled fixed debug APK"
+description = "ARM64 debug APK rebuilt after serializing Mali vertex/index uploads and preserving the existing Vulkan Mali crash safeguards."

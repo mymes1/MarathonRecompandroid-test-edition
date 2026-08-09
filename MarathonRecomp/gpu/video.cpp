@@ -1022,6 +1022,12 @@ struct RenderCommand
         struct
         {
             GuestBuffer* buffer;
+            // Set by the Mali guest-thread unlock path.  The render thread
+            // signals this after it has copied the guest bytes into a GPU
+            // staging buffer.  Without this acknowledgement the guest can
+            // unlock/reuse the same buffer while the render queue still
+            // points at it, causing intermittent partially old/new geometry.
+            std::atomic<bool>* completion;
         } unlockBuffer;
 
         struct 
@@ -2976,24 +2982,42 @@ static void UnlockBuffer(GuestBuffer* buffer)
 static void ProcUnlockBuffer16(const RenderCommand& cmd)
 {
     UnlockBuffer<uint16_t>(cmd.unlockBuffer.buffer, false);
+    if (cmd.unlockBuffer.completion != nullptr)
+    {
+        cmd.unlockBuffer.completion->store(true, std::memory_order_release);
+        cmd.unlockBuffer.completion->notify_one();
+    }
 }
 
 static void ProcUnlockBuffer32(const RenderCommand& cmd)
 {
     UnlockBuffer<uint32_t>(cmd.unlockBuffer.buffer, false);
+    if (cmd.unlockBuffer.completion != nullptr)
+    {
+        cmd.unlockBuffer.completion->store(true, std::memory_order_release);
+        cmd.unlockBuffer.completion->notify_one();
+    }
 }
 
 static void UnlockVertexBuffer(GuestBuffer* buffer)
 {
-    // Vertex/index uploads must be recorded by the render thread.  On the
-    // Mali compatibility path gpuUploadHeap is disabled, so UnlockBuffer()
-    // uses a staging buffer and records copy/barrier commands into the active
-    // graphics command list.  Calling it directly from the guest thread races
-    // the render thread's command recording and corrupts shared geometry.
+    // The Mali compatibility path records staged copies on the graphics
+    // thread.  The guest must not reuse its CPU lock buffer until that thread
+    // has consumed the bytes; otherwise a queued pointer can observe a later
+    // lock or a partially written mesh.
+    if (!g_isMali)
+    {
+        UnlockBuffer<uint32_t>(buffer);
+        return;
+    }
+
+    std::atomic<bool> completion{false};
     RenderCommand cmd;
     cmd.type = RenderCommandType::UnlockBuffer32;
     cmd.unlockBuffer.buffer = buffer;
+    cmd.unlockBuffer.completion = &completion;
     g_renderQueue.enqueue(cmd);
+    completion.wait(false, std::memory_order_acquire);
 }
 
 static void GetVertexBufferDesc(GuestBuffer* buffer, GuestBufferDesc* desc) 
@@ -3008,14 +3032,26 @@ static void* LockIndexBuffer(GuestBuffer* buffer, uint32_t, uint32_t, uint32_t f
 
 static void UnlockIndexBuffer(GuestBuffer* buffer) 
 {
+    if (!g_isMali)
+    {
+        if (buffer->guestFormat == D3DFMT_INDEX32)
+            UnlockBuffer<uint32_t>(buffer);
+        else
+            UnlockBuffer<uint16_t>(buffer);
+        return;
+    }
+
     // Keep index uploads on the same serialized render-thread path as vertex
     // uploads.  The command type preserves the guest index width for the
     // endian conversion performed by ProcUnlockBuffer16/32.
+    std::atomic<bool> completion{false};
     RenderCommand cmd;
     cmd.type = buffer->guestFormat == D3DFMT_INDEX32 ?
         RenderCommandType::UnlockBuffer32 : RenderCommandType::UnlockBuffer16;
     cmd.unlockBuffer.buffer = buffer;
+    cmd.unlockBuffer.completion = &completion;
     g_renderQueue.enqueue(cmd);
+    completion.wait(false, std::memory_order_acquire);
 }
 
 static void GetIndexBufferDesc(GuestBuffer* buffer, GuestBufferDesc* desc)
