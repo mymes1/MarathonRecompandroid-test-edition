@@ -216,6 +216,12 @@ struct GuestBuffer : GuestResource
     RenderFormat format = RenderFormat::UNKNOWN;
     uint32_t guestFormat = 0;
     bool lockedReadOnly = false;
+    // Mali cannot safely overwrite a buffer that an earlier frame may still
+    // be fetching.  The render backend stores the immutable upload selected
+    // for the current frame here; it is refreshed when the frame slot is
+    // reused or when this buffer is unlocked.
+    RenderBufferReference maliFrameReference{};
+    uint64_t maliFrameSerial = 0;
 };
 
 struct GuestSurfaceDesc

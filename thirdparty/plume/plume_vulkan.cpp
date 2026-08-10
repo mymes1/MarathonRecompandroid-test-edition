@@ -3139,7 +3139,22 @@ namespace plume {
 
         for (uint32_t i = 0; i < bufferBarriersCount; i++) {
             const RenderBufferBarrier &bufferBarrier = bufferBarriers[i];
+            if (bufferBarrier.buffer == nullptr) {
+                fprintf(stderr, "Ignoring Vulkan buffer barrier with a null buffer.\n");
+                continue;
+            }
+
             VulkanBuffer *interfaceBuffer = static_cast<VulkanBuffer *>(bufferBarrier.buffer);
+            if (interfaceBuffer->vk == VK_NULL_HANDLE || interfaceBuffer->desc.size == 0) {
+                fprintf(stderr,
+                    "Ignoring Vulkan buffer barrier with invalid buffer state "
+                    "(buffer=%p, vk=%" PRIx64 ", size=%" PRIu64 ").\n",
+                    static_cast<void *>(interfaceBuffer),
+                    static_cast<uint64_t>(reinterpret_cast<uintptr_t>(interfaceBuffer->vk)),
+                    static_cast<uint64_t>(interfaceBuffer->desc.size));
+                continue;
+            }
+
             VkBufferMemoryBarrier bufferMemoryBarrier = {};
             bufferMemoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
             // A barrier whose source stage is TOP_OF_PIPE does not wait for a

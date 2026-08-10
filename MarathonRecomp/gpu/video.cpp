@@ -265,6 +265,9 @@ static RenderRect g_scissorRect;
 static RenderVertexBufferView g_vertexBufferViews[16];
 static RenderInputSlot g_inputSlots[16];
 static RenderIndexBufferView g_indexBufferView({}, 0, RenderFormat::R16_UINT);
+static GuestBuffer* g_vertexBuffers[16]{};
+static uint32_t g_vertexBufferOffsets[16]{};
+static GuestBuffer* g_indexBuffer = nullptr;
 
 struct DirtyStates
 {
@@ -432,6 +435,22 @@ static std::unique_ptr<RenderPipeline> g_gammaCorrectionPipeline;
 
 static std::unique_ptr<RenderDescriptorSet> g_textureDescriptorSet;
 static std::unique_ptr<RenderDescriptorSet> g_samplerDescriptorSet;
+static Mutex g_textureDescriptorMutex;
+static bool g_isMali;
+
+// Texture descriptors may be updated by loader workers while the render
+// thread is recording a frame. Descriptor writes are not a synchronization
+// primitive, so keep the backend descriptor-set mutation serialized.
+static void SetTextureDescriptor(
+    uint32_t index,
+    RenderTexture* texture,
+    RenderTextureLayout layout,
+    RenderTextureView* view = nullptr)
+{
+    assert(g_textureDescriptorSet != nullptr);
+    std::lock_guard lock(g_textureDescriptorMutex);
+    g_textureDescriptorSet->setTexture(index, texture, layout, view);
+}
 
 static constexpr uint32_t CONDITIONAL_SURVEY_MAX = 64;
 static std::unique_ptr<RenderBuffer> g_conditionalSurveyBuffer;
@@ -685,6 +704,8 @@ struct UploadAllocator
 };
 
 static UploadAllocator g_uploadAllocators[NUM_FRAMES];
+static uint64_t g_frameUploadSerial[NUM_FRAMES]{};
+static uint64_t g_nextMaliUploadSerial = 0;
 
 struct IntermediaryUploadAllocator
 {
@@ -839,7 +860,7 @@ static void DestructTempResources()
                 g_userHeap.Free(texture->mappedMemory);
             }
 
-            g_textureDescriptorSet->setTexture(texture->descriptorIndex,
+            SetTextureDescriptor(texture->descriptorIndex,
                 g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
                 RenderTextureLayout::SHADER_READ,
                 g_blankTextureViews[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get());
@@ -847,7 +868,7 @@ static void DestructTempResources()
 
             if (texture->patchedTexture != nullptr)
             {
-                g_textureDescriptorSet->setTexture(texture->patchedTexture->descriptorIndex,
+                SetTextureDescriptor(texture->patchedTexture->descriptorIndex,
                     g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
                     RenderTextureLayout::SHADER_READ,
                     g_blankTextureViews[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get());
@@ -863,6 +884,16 @@ static void DestructTempResources()
         {
             const auto buffer = reinterpret_cast<GuestBuffer*>(resource);
 
+            for (uint32_t slot = 0; slot < std::size(g_vertexBuffers); ++slot)
+            {
+                if (g_vertexBuffers[slot] == buffer)
+                {
+                    g_vertexBuffers[slot] = nullptr;
+                    g_vertexBufferOffsets[slot] = 0;
+                }
+            }
+            if (g_indexBuffer == buffer)
+                g_indexBuffer = nullptr;
 
             if (buffer->mappedMemory != nullptr)
                 g_userHeap.Free(buffer->mappedMemory);
@@ -878,7 +909,7 @@ static void DestructTempResources()
 
             if (surface->descriptorIndex != NULL)
             {
-                g_textureDescriptorSet->setTexture(surface->descriptorIndex,
+                SetTextureDescriptor(surface->descriptorIndex,
                     g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
                     RenderTextureLayout::SHADER_READ,
                     g_blankTextureViews[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get());
@@ -906,6 +937,113 @@ static void DestructTempResources()
 
     g_tempResources[g_frame].clear();
     g_tempBuffers[g_frame].clear();
+}
+
+static uint64_t CurrentMaliUploadSerial()
+{
+    // A serial is unique across frame-slot reuse.  A buffer may be used in
+    // frame slot 0, then slot 1, then slot 0 again; comparing only the slot
+    // would incorrectly keep a reference to an upload allocation that is
+    // about to be overwritten.
+    return g_frameUploadSerial[g_frame];
+}
+
+template<typename T>
+static RenderBufferReference UploadMaliGuestBuffer(GuestBuffer* buffer)
+{
+    assert(buffer != nullptr);
+    assert(buffer->mappedMemory != nullptr);
+
+    auto allocation = g_uploadAllocators[g_frame].allocate<true>(
+        reinterpret_cast<const T*>(buffer->mappedMemory),
+        buffer->dataSize,
+        alignof(T));
+    buffer->maliFrameReference = allocation.buffer->at(allocation.offset);
+    buffer->maliFrameSerial = CurrentMaliUploadSerial();
+    return buffer->maliFrameReference;
+}
+
+static RenderBufferReference GetMaliVertexReference(GuestBuffer* buffer, uint32_t offset)
+{
+    if (buffer == nullptr)
+        return {};
+
+    if (buffer->maliFrameSerial != CurrentMaliUploadSerial() ||
+        buffer->maliFrameReference.ref == nullptr)
+    {
+        if (buffer->mappedMemory != nullptr)
+            UploadMaliGuestBuffer<uint32_t>(buffer);
+        else if (buffer->buffer != nullptr)
+            return buffer->buffer->at(offset);
+        else
+            return {};
+    }
+
+    return RenderBufferReference(buffer->maliFrameReference.ref,
+        buffer->maliFrameReference.offset + offset);
+}
+
+static RenderBufferReference GetMaliIndexReference(GuestBuffer* buffer)
+{
+    if (buffer == nullptr)
+        return {};
+
+    if (buffer->maliFrameSerial != CurrentMaliUploadSerial() ||
+        buffer->maliFrameReference.ref == nullptr)
+    {
+        if (buffer->mappedMemory != nullptr)
+        {
+            if (buffer->guestFormat == D3DFMT_INDEX32)
+                UploadMaliGuestBuffer<uint32_t>(buffer);
+            else
+                UploadMaliGuestBuffer<uint16_t>(buffer);
+        }
+        else if (buffer->buffer != nullptr)
+        {
+            return buffer->buffer->at(0);
+        }
+        else
+        {
+            return {};
+        }
+    }
+
+    return buffer->maliFrameReference;
+}
+
+static void RefreshMaliActiveBufferViews(GuestBuffer* changedBuffer = nullptr)
+{
+    if (!g_isMali)
+        return;
+
+    for (uint32_t slot = 0; slot < std::size(g_vertexBuffers); ++slot)
+    {
+        GuestBuffer* buffer = g_vertexBuffers[slot];
+        if (buffer == nullptr || (changedBuffer != nullptr && buffer != changedBuffer))
+            continue;
+
+        const RenderBufferReference reference =
+            GetMaliVertexReference(buffer, g_vertexBufferOffsets[slot]);
+        if (g_vertexBufferViews[slot].buffer != reference)
+        {
+            g_vertexBufferViews[slot].buffer = reference;
+            g_dirtyStates.vertexStreamFirst =
+                std::min<uint8_t>(g_dirtyStates.vertexStreamFirst, slot);
+            g_dirtyStates.vertexStreamLast =
+                std::max<uint8_t>(g_dirtyStates.vertexStreamLast, slot);
+        }
+    }
+
+    if (g_indexBuffer != nullptr &&
+        (changedBuffer == nullptr || g_indexBuffer == changedBuffer))
+    {
+        const RenderBufferReference reference = GetMaliIndexReference(g_indexBuffer);
+        if (g_indexBufferView.buffer != reference)
+        {
+            g_indexBufferView.buffer = reference;
+            g_dirtyStates.indices = true;
+        }
+    }
 }
 
 static std::thread::id g_presentThreadId = std::this_thread::get_id();
@@ -1656,9 +1794,6 @@ static uint32_t g_samplerDescriptorSize = SAMPLER_DESCRIPTOR_SIZE;
 static constexpr uint32_t PITCH_ALIGNMENT     = 0x100;
 static constexpr uint32_t PLACEMENT_ALIGNMENT = 0x200;
 
-// Set to true inside CreateHostDevice when a Mali GPU is detected.
-// Used to skip pipeline-creation paths that crash libGLES_mali on Android.
-static bool g_isMali = false;
 // Upload-buffer row-pitch and slice-placement alignment used for all texture
 // uploads.  On Mali, bufferRowLength != imageExtent.width in VkBufferImageCopy
 // causes the driver to mis-stride every texture (rows appear "extended or
@@ -1831,7 +1966,7 @@ static void CreateImGuiBackend()
     g_imFontTexture->textureView = g_imFontTexture->texture->createTextureView(textureViewDesc);
 
     g_imFontTexture->descriptorIndex = g_textureDescriptorAllocator.allocate();
-    g_textureDescriptorSet->setTexture(g_imFontTexture->descriptorIndex, g_imFontTexture->texture, RenderTextureLayout::SHADER_READ, g_imFontTexture->textureView.get());
+    SetTextureDescriptor(g_imFontTexture->descriptorIndex, g_imFontTexture->texture, RenderTextureLayout::SHADER_READ, g_imFontTexture->textureView.get());
 #endif
 
     io.Fonts->SetTexID(g_imFontTexture.get());
@@ -2012,7 +2147,7 @@ static void BeginCommandList()
             Video::WaitForGPU(); // Fine to wait for GPU, this'll only happen during resize.
 
             g_intermediaryBackBufferTexture = g_device->createTexture(RenderTextureDesc::Texture2D(width, height, 1, BACKBUFFER_FORMAT, RenderTextureFlag::RENDER_TARGET));
-            g_textureDescriptorSet->setTexture(g_intermediaryBackBufferTextureDescriptorIndex, g_intermediaryBackBufferTexture.get(), RenderTextureLayout::SHADER_READ);
+            SetTextureDescriptor(g_intermediaryBackBufferTextureDescriptorIndex, g_intermediaryBackBufferTexture.get(), RenderTextureLayout::SHADER_READ);
 
             g_intermediaryBackBufferTextureWidth = width;
             g_intermediaryBackBufferTextureHeight = height;
@@ -2590,7 +2725,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
         texture = g_device->createTexture(desc);
         textureView = texture->createTextureView(viewDesc);
 
-        g_textureDescriptorSet->setTexture(i, texture.get(), RenderTextureLayout::SHADER_READ, textureView.get());
+        SetTextureDescriptor(i, texture.get(), RenderTextureLayout::SHADER_READ, textureView.get());
     }
 
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
@@ -2968,7 +3103,19 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
             }
         };
 
-    if ((useCopyQueue && g_capabilities.gpuUploadHeap) || g_isMali)
+    if (g_isMali)
+    {
+        // Do not overwrite the buffer's long-lived allocation.  A previous
+        // frame can still be fetching it when the game locks the same D3D
+        // buffer again.  The per-frame upload allocation remains alive until
+        // that frame slot's fence retires.
+        UploadMaliGuestBuffer<T>(buffer);
+        // Unlock is not required to be followed by SetStreamSource/SetIndices.
+        // Publish the new immutable allocation to any binding that is already
+        // active in the guest render state.
+        RefreshMaliActiveBufferViews(buffer);
+    }
+    else if (useCopyQueue && g_capabilities.gpuUploadHeap)
     {
         copyBuffer(reinterpret_cast<T*>(buffer->buffer->map()));
         buffer->buffer->flushMappedRange(0, buffer->dataSize);
@@ -3760,6 +3907,11 @@ void Video::Present()
 
     g_dirtyStates = DirtyStates(true);
     g_uploadAllocators[g_frame].reset();
+    g_frameUploadSerial[g_frame] = ++g_nextMaliUploadSerial;
+    // A bound guest buffer may not be rebound when a new frame starts. Make
+    // its active view reference this frame slot's allocation rather than the
+    // allocation belonging to a previously submitted frame.
+    RefreshMaliActiveBufferViews();
     g_intermediaryUploadAllocator.reset();
     g_triangleFanIndexData.reset();
     g_quadIndexData.reset();
@@ -4096,7 +4248,7 @@ static GuestTexture* CreateTexture(uint32_t width, uint32_t height, uint32_t dep
     texture->isArrayTexture = texture->type == ResourceType::ArrayTexture;
     texture->descriptorIndex = g_textureDescriptorAllocator.allocate();
 
-    g_textureDescriptorSet->setTexture(texture->descriptorIndex, texture->texture, RenderTextureLayout::SHADER_READ, texture->textureView.get());
+    SetTextureDescriptor(texture->descriptorIndex, texture->texture, RenderTextureLayout::SHADER_READ, texture->textureView.get());
 
 #ifdef _DEBUG 
     texture->texture->setName(fmt::format("Texture {:X}", g_memory.MapVirtual(texture)));
@@ -4209,7 +4361,7 @@ static GuestSurface* CreateSurface(uint32_t width, uint32_t height, uint32_t for
         viewDesc.mipLevels = 1;
         surface->textureView = surface->textureHolder->createTextureView(viewDesc);
         surface->descriptorIndex = g_textureDescriptorAllocator.allocate();
-        g_textureDescriptorSet->setTexture(surface->descriptorIndex, surface->textureHolder.get(), RenderTextureLayout::SHADER_READ, surface->textureView.get());
+        SetTextureDescriptor(surface->descriptorIndex, surface->textureHolder.get(), RenderTextureLayout::SHADER_READ, surface->textureView.get());
 
     #ifdef _DEBUG 
         surface->texture->setName(fmt::format("{} {:X}", desc.flags & RenderTextureFlag::RENDER_TARGET ? "Render Target" : "Depth Stencil", g_memory.MapVirtual(surface)));
@@ -6274,7 +6426,12 @@ static void ProcSetStreamSource(const RenderCommand& cmd)
 
     bool dirty = false;
 
-    SetDirtyValue(dirty, g_vertexBufferViews[args.index].buffer, args.buffer != nullptr ? args.buffer->buffer->at(args.offset) : RenderBufferReference{});
+    g_vertexBuffers[args.index] = args.buffer;
+    g_vertexBufferOffsets[args.index] = args.offset;
+    const RenderBufferReference reference = g_isMali
+        ? GetMaliVertexReference(args.buffer, args.offset)
+        : (args.buffer != nullptr ? args.buffer->buffer->at(args.offset) : RenderBufferReference{});
+    SetDirtyValue(dirty, g_vertexBufferViews[args.index].buffer, reference);
     SetDirtyValue(dirty, g_vertexBufferViews[args.index].size, args.buffer != nullptr ? (args.buffer->dataSize - args.offset) : 0u);
     SetDirtyValue(dirty, g_inputSlots[args.index].stride, args.buffer != nullptr ? args.stride : 0u);
 
@@ -6297,7 +6454,11 @@ static void ProcSetIndices(const RenderCommand& cmd)
 {
     const auto& args = cmd.setIndices;
 
-    SetDirtyValue(g_dirtyStates.indices, g_indexBufferView.buffer, args.buffer != nullptr ? args.buffer->buffer->at(0) : RenderBufferReference{});
+    g_indexBuffer = args.buffer;
+    const RenderBufferReference reference = g_isMali
+        ? GetMaliIndexReference(args.buffer)
+        : (args.buffer != nullptr ? args.buffer->buffer->at(0) : RenderBufferReference{});
+    SetDirtyValue(g_dirtyStates.indices, g_indexBufferView.buffer, reference);
     SetDirtyValue(g_dirtyStates.indices, g_indexBufferView.format, args.buffer != nullptr ? args.buffer->format : RenderFormat::R16_UINT);
     SetDirtyValue(g_dirtyStates.indices, g_indexBufferView.size, args.buffer != nullptr ? args.buffer->dataSize : 0u);
 }
@@ -7022,7 +7183,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
         viewDesc.componentMapping = componentMapping;
         texture.textureView = texture.texture->createTextureView(viewDesc);
         texture.descriptorIndex = g_textureDescriptorAllocator.allocate();
-        g_textureDescriptorSet->setTexture(texture.descriptorIndex, texture.texture, RenderTextureLayout::SHADER_READ, texture.textureView.get());
+        SetTextureDescriptor(texture.descriptorIndex, texture.texture, RenderTextureLayout::SHADER_READ, texture.textureView.get());
 
         texture.width = ddsDesc.width;
         texture.height = ddsDesc.height;
@@ -7230,7 +7391,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
             texture.layout = RenderTextureLayout::UNKNOWN;
 
             texture.descriptorIndex = g_textureDescriptorAllocator.allocate();
-            g_textureDescriptorSet->setTexture(texture.descriptorIndex, texture.texture, RenderTextureLayout::SHADER_READ);
+            SetTextureDescriptor(texture.descriptorIndex, texture.texture, RenderTextureLayout::SHADER_READ);
 
             uint32_t rowPitch = (width * 4 + g_uploadPitchAlignment - 1) & ~(g_uploadPitchAlignment - 1);
             uint32_t slicePitch = rowPitch * height;
