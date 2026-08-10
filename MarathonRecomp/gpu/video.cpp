@@ -776,7 +776,13 @@ static IntermediaryUploadAllocator g_intermediaryUploadAllocator;
 // being accumulated on the render thread.  They must be declared before the
 // deferred-destruction pass because that pass has to remove a resource from
 // every pending collection before destroying its native wrapper.
-static ankerl::unordered_dense::map<RenderTexture*, RenderTextureLayout> g_barrierMap;
+struct PendingTextureBarrier
+{
+    RenderTextureLayout layout = RenderTextureLayout::UNKNOWN;
+    uint64_t generation = 0;
+};
+
+static ankerl::unordered_dense::map<RenderTexture*, PendingTextureBarrier> g_barrierMap;
 static std::vector<RenderTextureBarrier> g_barriers;
 static ankerl::unordered_dense::set<GuestSurface*> g_pendingSurfaceCopies;
 static ankerl::unordered_dense::set<GuestSurface*> g_pendingResolves;
@@ -887,6 +893,13 @@ static void DestructTempResources()
                 return;
 
             g_barrierMap.erase(texture->texture);
+            g_barriers.erase(
+                std::remove_if(g_barriers.begin(), g_barriers.end(),
+                    [nativeTexture = texture->texture](const RenderTextureBarrier& barrier)
+                    {
+                        return barrier.texture == nativeTexture;
+                    }),
+                g_barriers.end());
 
             if (texture->type == ResourceType::Texture ||
                 texture->type == ResourceType::VolumeTexture ||
@@ -1150,7 +1163,14 @@ static void AddBarrier(GuestBaseTexture* texture, RenderTextureLayout layout)
     // backend cannot turn that into a valid VkImageMemoryBarrier.
     if (texture != nullptr && texture->texture != nullptr && texture->layout != layout)
     {
-        g_barrierMap[texture->texture] = layout;
+        // Capture the wrapper generation now, not when FlushBarriers() runs.
+        // VulkanTexture wrappers can be moved or rebound while commands are
+        // being accumulated; taking the snapshot later would make a barrier
+        // intended for the old image appear valid for its replacement.
+        g_barrierMap[texture->texture] = {
+            layout,
+            texture->texture->generation
+        };
         texture->layout = layout;
     }
 }
@@ -1159,8 +1179,14 @@ static void FlushBarriers()
 {
     if (!g_barrierMap.empty())
     {
-        for (auto& [texture, layout] : g_barrierMap)
-            g_barriers.emplace_back(texture, layout);
+        for (auto& [texture, pending] : g_barrierMap)
+        {
+            RenderTextureBarrier barrier;
+            barrier.texture = texture;
+            barrier.layout = pending.layout;
+            barrier.generation = pending.generation;
+            g_barriers.emplace_back(barrier);
+        }
 
         g_commandLists[g_frame]->barriers(RenderBarrierStage::GRAPHICS | RenderBarrierStage::COPY, g_barriers);
 

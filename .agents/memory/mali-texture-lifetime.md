@@ -28,3 +28,14 @@ causing stretched/morphed geometry.
 allocation alive behind the frame fence, refresh every active binding that
 references the changed buffer, and refresh bound buffers after the slot fence
 retires.
+
+Deferred texture barriers must capture the wrapper generation when the barrier
+is queued, rather than when the deferred list is flushed.
+
+**Why:** A wrapper can be moved or rebound between those points; taking the
+snapshot at flush time can make a barrier for a destroyed image appear valid
+for its replacement and defeat generation-based validation.
+
+**How to apply:** Store the target layout and generation together in every
+guest-side deferred barrier record, and remove both map and vector records
+before destroying a deferred texture wrapper.
