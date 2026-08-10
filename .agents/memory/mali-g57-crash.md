@@ -19,9 +19,11 @@ description: Root causes and fixes for SIGSEGV in libGLES_mali and vkGetBufferDe
 ### 1. Mixed pipeline layout (PRIMARY)
 `g_pipelineLayout` added a 5th descriptor set (set 4) containing a `VK_DESCRIPTOR_TYPE_STORAGE_BUFFER` (conditional survey) alongside 4 UPDATE_AFTER_BIND variable-count bindless sets (sets 0-3). Mali-G57 crashes in the shader compiler when processing any pipeline against such a mixed layout.
 
-**Fix:** `g_capabilities.conditionalSurvey = false` for Mali. Guard all conditional survey buffer/descriptor creation, pipeline layout addition, descriptor binding, and `ProcSetConditionalSurvey` with this flag.
+**Fix:** `g_capabilities.conditionalSurvey = false` for Mali. Guard all conditional survey buffer/descriptor creation, pipeline layout addition, descriptor binding, and `ProcSetConditionalSurvey` with this flag. Also create the sampled-image and sampler arrays as fixed-size descriptor bindings on Mali: do not set `UPDATE_AFTER_BIND`, `PARTIALLY_BOUND`, or variable-count layout flags on that path.
 
 **Why:** Even though the pipeline's shader doesn't use set 4, the Vulkan driver processes the entire pipeline layout during shader compilation. The mixed layout triggers a driver bug in Mali-G57 / Android 15.
+
+**How to apply:** Keep the Mali descriptor allocator limit synchronized with the fixed descriptor-array counts, and preserve the normal update-after-bind bindless path on non-Mali backends.
 
 ### 2. MSAA resolve depth pipelines compiled unconditionally (SECONDARY)
 `g_resolveMsaaDepthPipelines[0/1/2]` are created during initialization even on Mali where MSAA is disabled.

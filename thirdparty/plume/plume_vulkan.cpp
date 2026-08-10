@@ -1193,6 +1193,7 @@ namespace plume {
     VulkanTexture::VulkanTexture(VulkanTexture &&other) noexcept {
         registerVulkanTexture(this);
 
+        generation = other.generation;
         vk = other.vk;
         imageView = other.imageView;
         imageFormat = other.imageFormat;
@@ -1221,6 +1222,11 @@ namespace plume {
             return *this;
         }
 
+        // The destination wrapper may already have pending barriers referring
+        // to its previous image.  Keep the generation unique across the
+        // replacement so those deferred barriers are rejected below.
+        const uint64_t nextGeneration = std::max(generation + 1, other.generation);
+
         // The destination is a real vector element and is already registered.
         // Release only resources owned by that element before taking the
         // source's handles.  Swapchain images themselves are not owned.
@@ -1231,6 +1237,7 @@ namespace plume {
             vmaDestroyImage(device->allocator, vk, allocation);
         }
 
+        generation = nextGeneration;
         vk = other.vk;
         imageView = other.imageView;
         imageFormat = other.imageFormat;
@@ -1428,22 +1435,27 @@ namespace plume {
         
         thread_local std::vector<VkDescriptorBindingFlags> bindingFlags;
         VkDescriptorSetLayoutBindingFlagsCreateInfo flagsInfo = {};
-        const bool updateAfterBind = descriptorSetDesc.updateAfterBind || descriptorSetDesc.lastRangeIsBoundless;
-        if (updateAfterBind && (descriptorSetDesc.descriptorRangesCount > 0)) {
+        const bool updateAfterBind = descriptorSetDesc.updateAfterBind;
+        if ((updateAfterBind || descriptorSetDesc.lastRangeIsBoundless) && (descriptorSetDesc.descriptorRangesCount > 0)) {
             bindingFlags.clear();
             bindingFlags.resize(descriptorSetDesc.descriptorRangesCount, 0);
-            bindingFlags[descriptorSetDesc.descriptorRangesCount - 1] =
-                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-            if (descriptorSetDesc.lastRangeIsBoundless)
-                bindingFlags[descriptorSetDesc.descriptorRangesCount - 1] |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+            VkDescriptorBindingFlags lastBindingFlags = 0;
+            if (updateAfterBind)
+                lastBindingFlags |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+            if (descriptorSetDesc.lastRangeIsBoundless) {
+                lastBindingFlags |=
+                    VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                    VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+            }
+            bindingFlags[descriptorSetDesc.descriptorRangesCount - 1] = lastBindingFlags;
 
             flagsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
             flagsInfo.pBindingFlags = bindingFlags.data();
             flagsInfo.bindingCount = uint32_t(bindingFlags.size());
 
             setLayoutInfo.pNext = &flagsInfo;
-            setLayoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+            if (updateAfterBind)
+                setLayoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
         }
         
         VkResult res = vkCreateDescriptorSetLayout(device->vk, &setLayoutInfo, nullptr, &vk);
@@ -2148,8 +2160,7 @@ namespace plume {
 
         setLayout = new VulkanDescriptorSetLayout(device, desc);
 
-        descriptorPool = createDescriptorPool(device, typeCounts,
-            desc.updateAfterBind || desc.lastRangeIsBoundless);
+        descriptorPool = createDescriptorPool(device, typeCounts, desc.updateAfterBind);
         if (descriptorPool == VK_NULL_HANDLE) {
             return;
         }
@@ -2788,6 +2799,16 @@ namespace plume {
 
     void VulkanSwapChain::releaseSwapChain() {
         if (vk != VK_NULL_HANDLE) {
+            // The VkImages returned by vkGetSwapchainImagesKHR become invalid
+            // when this swapchain is destroyed, but the wrapper objects remain
+            // in `textures` until the next resize populates them. Clear the
+            // native handles first so a pending barrier cannot submit a dead
+            // image to Android Mali.
+            for (VulkanTexture &texture : textures) {
+                texture.vk = VK_NULL_HANDLE;
+                texture.textureLayout = RenderTextureLayout::UNKNOWN;
+                texture.barrierStages = RenderBarrierStage::NONE;
+            }
             vkDestroySwapchainKHR(commandQueue->device->vk, vk, nullptr);
             vk = VK_NULL_HANDLE;
         }
@@ -3189,6 +3210,15 @@ namespace plume {
             if (!isLiveVulkanTexture(interfaceTexture)) {
                 fprintf(stderr, "Ignoring Vulkan texture barrier for a dead wrapper (texture=%p).\n",
                     static_cast<void *>(interfaceTexture));
+                continue;
+            }
+            if (textureBarrier.generation != interfaceTexture->generation) {
+                fprintf(stderr,
+                    "Ignoring stale Vulkan texture barrier for a replaced image "
+                    "(texture=%p, barrierGeneration=%" PRIu64 ", currentGeneration=%" PRIu64 ").\n",
+                    static_cast<void *>(interfaceTexture),
+                    textureBarrier.generation,
+                    interfaceTexture->generation);
                 continue;
             }
             if (interfaceTexture->vk == VK_NULL_HANDLE) {
@@ -4277,25 +4307,14 @@ namespace plume {
         }
 
         VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures = {};
-        // VK_KHR_buffer_device_address was promoted to Vulkan 1.2 core. Android GPU
-        // drivers exhibit two distinct failure modes that can both leave
-        // vkGetBufferDeviceAddress unresolved (null) and crash with SIGSEGV at pc=0x0:
+        // VK_KHR_buffer_device_address was promoted to Vulkan 1.2 core. Query the
+        // feature unconditionally so the result is available for both the core and
+        // extension paths. The extension itself is only a valid enablement path on
+        // pre-1.2 devices when it was actually advertised by the physical device.
         //
-        //   (a) 1.2+ devices (e.g. some Mali-G57 / Android 15 builds) omit the
-        //       extension name from vkEnumerateDeviceExtensionProperties even though
-        //       the feature is queryable/usable via the core feature struct.
-        //
-        //   (b) 1.1 devices (e.g. MT8781 / Mali-G57 MC2 / Android 15) never list
-        //       the KHR extension either, so the previous 1.2-gated guard also misses
-        //       them; the feature struct is never queried and the function pointer is
-        //       never resolved.
-        //
-        // Fix: always append the feature struct to the query chain — drivers silently
-        // ignore pNext structs whose sType they don't recognise, so this is safe for
-        // any device. If the driver fills in bufferDeviceAddress == VK_TRUE we know
-        // the feature works; we then enable it and, for pre-1.2 devices that omit the
-        // extension name, force the KHR extension into the enabled set so that
-        // vkGetDeviceProcAddr (invoked by volkLoadDevice) resolves the entry point.
+        // This renderer passes buffer device addresses through push constants for
+        // its upload/geometry buffers. It cannot safely continue with a device that
+        // reports the feature but does not expose a callable entry point.
         bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
         bufferDeviceAddressFeatures.pNext = featuresChain;
         featuresChain = &bufferDeviceAddressFeatures;
@@ -4401,8 +4420,8 @@ namespace plume {
              VK_VERSION_MINOR(physicalDeviceProperties.apiVersion) >= 2);
         // The KHR feature structure can be queried on drivers that do not
         // advertise the extension, but that does not make the KHR entry point
-        // legal to use on Vulkan 1.1.  Only expose BDA when either the core
-        // Vulkan 1.2 path or the advertised KHR extension is available.
+        // legal to use on Vulkan 1.1. Only expose BDA when either the core Vulkan
+        // 1.2 path or the advertised KHR extension is available.
         const bool bufferDeviceAddressSupported =
             bufferDeviceAddressFeatures.bufferDeviceAddress &&
             (bufferDeviceAddressCore || bufferDeviceAddressExtensionFound);
@@ -4411,11 +4430,7 @@ namespace plume {
             createDeviceChain = &bufferDeviceAddressFeatures;
         }
         else {
-            // The renderer relies on vkGetBufferDeviceAddress for bindless vertex/index/constant
-            // buffer references on every non-D3D12 backend; without it, calls into the (unresolved,
-            // null) function pointer will crash with SIGSEGV the first time a buffer is uploaded.
-            fprintf(stderr, "[plume] Warning: VK_KHR_buffer_device_address / core 1.2 bufferDeviceAddress feature "
-                "is not available through a valid core or advertised KHR path. Device addresses are disabled.\n");
+            fprintf(stderr, "[plume] Vulkan device does not provide a valid buffer-device-address feature path.\n");
         }
         
         if (portabilityFound) {
@@ -4512,6 +4527,22 @@ namespace plume {
         // required on Android Mali drivers where the KHR BDA entry point is
         // available even when the promoted core name is not.
         volkLoadDevice(vk);
+
+        const bool bufferDeviceAddressEntryPointAvailable =
+            vkGetBufferDeviceAddress != nullptr || vkGetBufferDeviceAddressKHR != nullptr;
+        if (!bufferDeviceAddressSupported || !bufferDeviceAddressEntryPointAvailable) {
+            // The renderer has no non-BDA geometry path. Do not create an
+            // apparently valid device and defer this failure until the first
+            // archive upload calls VulkanBuffer::getDeviceAddress(); on Android
+            // that used to become a null function call at pc=0x0.
+            fprintf(stderr,
+                "[plume] Vulkan device rejected: buffer-device-address is required "
+                "(feature=%s, entrypoint=%s).\n",
+                bufferDeviceAddressSupported ? "enabled" : "missing",
+                bufferDeviceAddressEntryPointAvailable ? "resolved" : "missing");
+            release();
+            return;
+        }
 
         for (uint32_t i = 0; i < queueFamilyCount; i++) {
             for (uint32_t j = 0; j < queueFamilies[i].queues.size(); j++) {

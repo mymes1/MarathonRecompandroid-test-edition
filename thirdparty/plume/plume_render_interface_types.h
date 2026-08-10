@@ -905,13 +905,11 @@ namespace plume {
     struct RenderTextureBarrier {
         RenderTexture *texture = nullptr;
         RenderTextureLayout layout = RenderTextureLayout::UNKNOWN;
+        uint64_t generation = 0;
 
         RenderTextureBarrier() = default;
 
-        RenderTextureBarrier(RenderTexture *texture, RenderTextureLayout layout) {
-            this->texture = texture;
-            this->layout = layout;
-        }
+        RenderTextureBarrier(RenderTexture *texture, RenderTextureLayout layout);
     };
 
     struct RenderClearValue {

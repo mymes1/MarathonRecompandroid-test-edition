@@ -40,10 +40,24 @@ namespace plume {
     };
 
     struct RenderTexture {
+        // Incremented by backends when a wrapper is rebound to a different
+        // native image.  Barrier records snapshot this value so deferred
+        // command recording cannot apply a transition to a replacement image.
+        uint64_t generation = 1;
+
         virtual ~RenderTexture() { }
         virtual std::unique_ptr<RenderTextureView> createTextureView(const RenderTextureViewDesc &desc) const = 0;
         virtual void setName(const std::string &name) = 0;
     };
+
+    inline RenderTextureBarrier::RenderTextureBarrier(
+        RenderTexture *texture,
+        RenderTextureLayout layout)
+    {
+        this->texture = texture;
+        this->layout = layout;
+        this->generation = texture != nullptr ? texture->generation : 0;
+    }
 
     struct RenderAccelerationStructure {
         virtual ~RenderAccelerationStructure() { }

@@ -452,6 +452,23 @@ static void SetTextureDescriptor(
     g_textureDescriptorSet->setTexture(index, texture, layout, view);
 }
 
+static void ConfigureBindlessDescriptorSet(
+    RenderDescriptorSetBuilder& builder,
+    uint32_t descriptorCount)
+{
+    // The embedded SPIR-V uses descriptor-indexed arrays.  Desktop/Adreno
+    // keeps the original variable-count, update-after-bind bindless layout.
+    // Mali-G57 on Android 15 has a shader-compiler bug when that layout is
+    // combined with the renderer's other descriptor sets.  Use an ordinary
+    // fixed-size binding on Mali: no variable-count, partially-bound, or
+    // update-after-bind layout flags.  The descriptor count is still bounded
+    // by the device limits and the allocator uses the same count.
+    if (g_isMali)
+        builder.end(false, 0, false);
+    else
+        builder.end(true, descriptorCount, true);
+}
+
 static constexpr uint32_t CONDITIONAL_SURVEY_MAX = 64;
 static std::unique_ptr<RenderBuffer> g_conditionalSurveyBuffer;
 static std::unique_ptr<RenderDescriptorSet> g_conditionalSurveyDescriptorSet;
@@ -610,6 +627,7 @@ static uint8_t* const g_vertexDeclarationCache[] =
 };
 
 static xxHashMap<std::pair<uint32_t, std::unique_ptr<RenderSampler>>> g_samplerStates;
+static bool g_samplerOverflowWarned = false;
 
 static Mutex g_vertexDeclarationMutex;
 static xxHashMap<GuestVertexDeclaration*> g_vertexDeclarations;
@@ -754,6 +772,15 @@ struct IntermediaryUploadAllocator
 
 static IntermediaryUploadAllocator g_intermediaryUploadAllocator;
 
+// These containers hold raw guest/native resource pointers while commands are
+// being accumulated on the render thread.  They must be declared before the
+// deferred-destruction pass because that pass has to remove a resource from
+// every pending collection before destroying its native wrapper.
+static ankerl::unordered_dense::map<RenderTexture*, RenderTextureLayout> g_barrierMap;
+static std::vector<RenderTextureBarrier> g_barriers;
+static ankerl::unordered_dense::set<GuestSurface*> g_pendingSurfaceCopies;
+static ankerl::unordered_dense::set<GuestSurface*> g_pendingResolves;
+
 static std::vector<GuestResource*> g_tempResources[NUM_FRAMES];
 static std::vector<std::unique_ptr<RenderBuffer>> g_tempBuffers[NUM_FRAMES];
 
@@ -848,6 +875,63 @@ static void DestructTempResources()
 {
     for (auto resource : g_tempResources[g_frame])
     {
+        // Barrier and stretch/resolve collections intentionally contain raw
+        // pointers for low overhead on the render thread.  A resource can be
+        // queued for destruction after a state change has already added it to
+        // one of those collections.  Remove every such reference before the
+        // GuestBaseTexture destructor releases its native wrapper; otherwise
+        // the next FlushBarriers() can submit a dead VkImage to Mali.
+        auto removeTextureReferences = [&](GuestBaseTexture* texture)
+        {
+            if (texture == nullptr)
+                return;
+
+            g_barrierMap.erase(texture->texture);
+
+            if (texture->type == ResourceType::Texture ||
+                texture->type == ResourceType::VolumeTexture ||
+                texture->type == ResourceType::ArrayTexture)
+            {
+                auto guestTexture = reinterpret_cast<GuestTexture*>(texture);
+                for (uint32_t slot = 0; slot < std::size(g_textures); ++slot)
+                {
+                    if (g_textures[slot] == guestTexture)
+                        g_textures[slot] = nullptr;
+                }
+
+                if (guestTexture->sourceSurface != nullptr)
+                {
+                    guestTexture->sourceSurface->destinationTextures.erase(guestTexture);
+                    guestTexture->sourceSurface = nullptr;
+                }
+            }
+
+            if (texture->type == ResourceType::RenderTarget ||
+                texture->type == ResourceType::DepthStencil)
+            {
+                auto surface = reinterpret_cast<GuestSurface*>(texture);
+                g_pendingSurfaceCopies.erase(surface);
+                g_pendingResolves.erase(surface);
+
+                if (g_renderTarget == surface)
+                    g_renderTarget = nullptr;
+                if (g_depthStencil == surface)
+                    g_depthStencil = nullptr;
+
+                for (auto& pendingTexture : g_textures)
+                {
+                    if (pendingTexture != nullptr && pendingTexture->sourceSurface == surface)
+                        pendingTexture->sourceSurface = nullptr;
+                }
+
+                // The map owns the only deferred references to destination
+                // textures that are not necessarily bound in g_textures.
+                // Clearing it prevents a later resolve pass from walking a
+                // destroyed surface or one of its stale destinations.
+                surface->destinationTextures.clear();
+            }
+        };
+
         switch (resource->type)
         {
         case ResourceType::Texture:
@@ -855,6 +939,7 @@ static void DestructTempResources()
         case ResourceType::ArrayTexture:
         {
             const auto texture = reinterpret_cast<GuestTexture*>(resource);
+            removeTextureReferences(texture);
 
             if (texture->mappedMemory != nullptr) {
                 g_userHeap.Free(texture->mappedMemory);
@@ -906,6 +991,7 @@ static void DestructTempResources()
         case ResourceType::DepthStencil:
         {
             const auto surface = reinterpret_cast<GuestSurface*>(resource);
+            removeTextureReferences(surface);
 
             if (surface->descriptorIndex != NULL)
             {
@@ -1057,8 +1143,6 @@ static std::atomic<bool> g_readyForCommands;
 //     __imp__sub_824ECA00(ctx, base);
 // }
 
-static ankerl::unordered_dense::map<RenderTexture*, RenderTextureLayout> g_barrierMap;
-
 static void AddBarrier(GuestBaseTexture* texture, RenderTextureLayout layout)
 {
     // A guest object can outlive a failed native texture creation.  Never
@@ -1070,8 +1154,6 @@ static void AddBarrier(GuestBaseTexture* texture, RenderTextureLayout layout)
         texture->layout = layout;
     }
 }
-
-static std::vector<RenderTextureBarrier> g_barriers;
 
 static void FlushBarriers()
 {
@@ -1124,9 +1206,6 @@ enum class CsdFilterState
 };
 
 static CsdFilterState g_csdFilterState;
-
-static ankerl::unordered_dense::set<GuestSurface*> g_pendingSurfaceCopies;
-static ankerl::unordered_dense::set<GuestSurface*> g_pendingResolves;
 
 enum class RenderCommandType
 {
@@ -1805,8 +1884,8 @@ static uint32_t g_uploadPlacementAlignment = PLACEMENT_ALIGNMENT;
 #if defined(__ANDROID__)
 // Mali-based devices advertise descriptor-indexing limits large enough for the desktop
 // bindless layout but crash inside the system Vulkan driver (libGLES_mali) while
-// compiling shaders with that layout. Keep the descriptor pool deliberately small;
-// the renderer's descriptor allocator already supports this fallback.
+// compiling shaders with that layout. Keep both descriptor arrays deliberately small;
+// the renderer's descriptor allocators already support this fallback.
 // The Samsung Galaxy Tab A9 family (SM-X110 Wi-Fi, SM-X115 LTE, SM-X116/SM-X117 5G)
 // all share the same Mali-G57 chip and require this cap regardless of connectivity.
 static constexpr size_t MALI_TEXTURE_DESCRIPTOR_SIZE = 1024;
@@ -1977,12 +2056,12 @@ static void CreateImGuiBackend()
     RenderDescriptorSetBuilder descriptorSetBuilder;
     descriptorSetBuilder.begin();
     descriptorSetBuilder.addTexture(0, g_textureDescriptorSize);
-    descriptorSetBuilder.end(!g_isMali, g_textureDescriptorSize, g_isMali);
+    ConfigureBindlessDescriptorSet(descriptorSetBuilder, g_textureDescriptorSize);
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
 
     descriptorSetBuilder.begin();
     descriptorSetBuilder.addSampler(0, g_samplerDescriptorSize);
-    descriptorSetBuilder.end(!g_isMali, g_samplerDescriptorSize, g_isMali);
+    ConfigureBindlessDescriptorSet(descriptorSetBuilder, g_samplerDescriptorSize);
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
 
     pipelineLayoutBuilder.addPushConstant(0, 2, sizeof(ImGuiPushConstants), RenderShaderStageFlag::VERTEX | RenderShaderStageFlag::PIXEL);
@@ -2477,7 +2556,8 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
             g_isMali = true;
 
             g_textureDescriptorSize = uint32_t(std::min<size_t>(g_textureDescriptorSize, MALI_TEXTURE_DESCRIPTOR_SIZE));
-            LOGF_WARNING("Mali compatibility path: limiting bindless texture descriptors to {} to prevent libGLES_mali shader compiler crash.", g_textureDescriptorSize);
+            g_samplerDescriptorSize = uint32_t(std::min<size_t>(g_samplerDescriptorSize, MALI_TEXTURE_DESCRIPTOR_SIZE));
+            LOGF_WARNING("Mali compatibility path: limiting bindless descriptors to {} textures and {} samplers to prevent libGLES_mali shader compiler crashes.", g_textureDescriptorSize, g_samplerDescriptorSize);
 
             // Stock Mali Vulkan drivers are considerably less tolerant of optional
             // paths than Adreno/Turnip.  Disable features that cause SIGSEGV inside
@@ -2675,7 +2755,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     RenderDescriptorSetBuilder descriptorSetBuilder;
     descriptorSetBuilder.begin();
     descriptorSetBuilder.addTexture(0, g_textureDescriptorSize);
-    descriptorSetBuilder.end(!g_isMali, g_textureDescriptorSize, g_isMali);
+    ConfigureBindlessDescriptorSet(descriptorSetBuilder, g_textureDescriptorSize);
     
     g_textureDescriptorSet = descriptorSetBuilder.create(g_device.get());
     
@@ -2728,19 +2808,40 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
         SetTextureDescriptor(i, texture.get(), RenderTextureLayout::SHADER_READ, textureView.get());
     }
 
+    if (g_isMali)
+    {
+        // The Mali layout deliberately omits PARTIALLY_BOUND. Initialize all
+        // fixed texture slots so a shader indexing a slot before its real
+        // resource is published still observes a valid image descriptor.
+        for (uint32_t i = TEXTURE_DESCRIPTOR_NULL_COUNT; i < g_textureDescriptorSize; ++i)
+        {
+            SetTextureDescriptor(i,
+                g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
+                RenderTextureLayout::SHADER_READ,
+                g_blankTextureViews[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get());
+        }
+    }
+
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
     
     descriptorSetBuilder.begin();
     descriptorSetBuilder.addSampler(0, g_samplerDescriptorSize);
-    descriptorSetBuilder.end(!g_isMali, g_samplerDescriptorSize, g_isMali);
+    ConfigureBindlessDescriptorSet(descriptorSetBuilder, g_samplerDescriptorSize);
     
     g_samplerDescriptorSet = descriptorSetBuilder.create(g_device.get());
     auto& [descriptorIndex, sampler] = g_samplerStates[XXH3_64bits(&g_samplerDescs[0], sizeof(RenderSamplerDesc))];
     descriptorIndex = 1;
     sampler = g_device->createSampler(g_samplerDescs[0]);
     g_samplerDescriptorSet->setSampler(0, sampler.get());
+    if (g_isMali)
+    {
+        // The fixed Mali sampler binding cannot be partially bound. Keep all
+        // entries valid until the sampler cache publishes their real sampler.
+        for (uint32_t i = 1; i < g_samplerDescriptorSize; ++i)
+            g_samplerDescriptorSet->setSampler(i, sampler.get());
+    }
 
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
 
@@ -5647,6 +5748,11 @@ static void ProcSetBooleans(const RenderCommand& cmd)
 static void ProcSetSamplerState(const RenderCommand& cmd)
 {
     const auto& args = cmd.setSamplerState;
+    if (args.index >= std::size(g_samplerDescs))
+    {
+        LOGF_WARNING("Ignoring sampler state for invalid sampler index {}.", args.index);
+        return;
+    }
 
     const auto addressU = ConvertTextureAddressMode((args.data0 >> 10) & 0x7);
     const auto addressV = ConvertTextureAddressMode((args.data0 >> 13) & 0x7);
@@ -5682,10 +5788,28 @@ static void ProcSetSamplerState(const RenderCommand& cmd)
         auto& [descriptorIndex, sampler] = g_samplerStates[XXH3_64bits(&samplerDesc, sizeof(RenderSamplerDesc))];
         if (descriptorIndex == NULL)
         {
-            descriptorIndex = g_samplerStates.size();
-            sampler = g_device->createSampler(samplerDesc);
-
-            g_samplerDescriptorSet->setSampler(descriptorIndex - 1, sampler.get());
+            // descriptorIndex is one-based so zero can represent a cache
+            // miss.  The descriptor set is fixed-width on Mali and is
+            // clamped to the device limit on every backend; never publish a
+            // sampler past that width.  Reusing slot zero is safe because the
+            // default sampler is valid for every shader sampler.
+            const uint32_t candidate = uint32_t(g_samplerStates.size());
+            if (candidate <= g_samplerDescriptorSize)
+            {
+                descriptorIndex = candidate;
+                sampler = g_device->createSampler(samplerDesc);
+                g_samplerDescriptorSet->setSampler(descriptorIndex - 1, sampler.get());
+            }
+            else
+            {
+                descriptorIndex = 1;
+                if (!g_samplerOverflowWarned)
+                {
+                    g_samplerOverflowWarned = true;
+                    LOGF_WARNING("Sampler descriptor pool exhausted (limit={}); reusing default sampler.",
+                        g_samplerDescriptorSize);
+                }
+            }
         }
 
         SetDirtyValue(g_dirtyStates.sharedConstants, g_sharedConstants.samplerIndices[args.index], descriptorIndex - 1);
