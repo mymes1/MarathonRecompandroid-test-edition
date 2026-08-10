@@ -1259,11 +1259,11 @@ namespace plume {
     VulkanTexture::~VulkanTexture() {
         unregisterVulkanTexture(this);
 
-        if (imageView != VK_NULL_HANDLE) {
+        if (imageView != VK_NULL_HANDLE && device != nullptr) {
             vkDestroyImageView(device->vk, imageView, nullptr);
         }
 
-        if (ownership && (vk != VK_NULL_HANDLE)) {
+        if (ownership && (vk != VK_NULL_HANDLE) && device != nullptr) {
             vmaDestroyImage(device->allocator, vk, allocation);
         }
     }
@@ -1428,10 +1428,15 @@ namespace plume {
         
         thread_local std::vector<VkDescriptorBindingFlags> bindingFlags;
         VkDescriptorSetLayoutBindingFlagsCreateInfo flagsInfo = {};
-        if (descriptorSetDesc.lastRangeIsBoundless && (descriptorSetDesc.descriptorRangesCount > 0)) {
+        const bool updateAfterBind = descriptorSetDesc.updateAfterBind || descriptorSetDesc.lastRangeIsBoundless;
+        if (updateAfterBind && (descriptorSetDesc.descriptorRangesCount > 0)) {
             bindingFlags.clear();
             bindingFlags.resize(descriptorSetDesc.descriptorRangesCount, 0);
-            bindingFlags[descriptorSetDesc.descriptorRangesCount - 1] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+            bindingFlags[descriptorSetDesc.descriptorRangesCount - 1] =
+                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+            if (descriptorSetDesc.lastRangeIsBoundless)
+                bindingFlags[descriptorSetDesc.descriptorRangesCount - 1] |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
 
             flagsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
             flagsInfo.pBindingFlags = bindingFlags.data();
@@ -2143,7 +2148,8 @@ namespace plume {
 
         setLayout = new VulkanDescriptorSetLayout(device, desc);
 
-        descriptorPool = createDescriptorPool(device, typeCounts, desc.lastRangeIsBoundless);
+        descriptorPool = createDescriptorPool(device, typeCounts,
+            desc.updateAfterBind || desc.lastRangeIsBoundless);
         if (descriptorPool == VK_NULL_HANDLE) {
             return;
         }
@@ -2208,19 +2214,22 @@ namespace plume {
     }
 
     void VulkanDescriptorSet::setTexture(uint32_t descriptorIndex, const RenderTexture *texture, const RenderTextureLayout textureLayout, const RenderTextureView *textureView) {
-        if (texture == nullptr) {
-            return;
-        }
-
-        const VulkanTexture *interfaceTexture = static_cast<const VulkanTexture *>(texture);
         VkDescriptorImageInfo imageInfo = {};
         imageInfo.imageLayout = toImageLayout(textureLayout);
 
-        if (textureView != nullptr) {
+        if (texture == nullptr) {
+            // A partially-bound update-after-bind slot is the Vulkan-supported
+            // way to clear a sampled-image descriptor.  Ignoring this call
+            // leaves a freed/recycled slot pointing at a destroyed VkImageView.
+            // The null view is never sampled by a valid texture index.
+            imageInfo.imageView = VK_NULL_HANDLE;
+        }
+        else if (textureView != nullptr) {
             const VulkanTextureView *interfaceTextureView = static_cast<const VulkanTextureView *>(textureView);
             imageInfo.imageView = interfaceTextureView->vk;
         }
         else {
+            const VulkanTexture *interfaceTexture = static_cast<const VulkanTexture *>(texture);
             imageInfo.imageView = (interfaceTexture != nullptr) ? interfaceTexture->imageView : VK_NULL_HANDLE;
         }
 
@@ -2272,7 +2281,7 @@ namespace plume {
         vkUpdateDescriptorSets(device->vk, 1, &writeDescriptor, 0, nullptr);
     }
 
-    VkDescriptorPool VulkanDescriptorSet::createDescriptorPool(VulkanDevice *device, const std::unordered_map<VkDescriptorType, uint32_t> &typeCounts, bool lastRangeIsBoundless) {
+    VkDescriptorPool VulkanDescriptorSet::createDescriptorPool(VulkanDevice *device, const std::unordered_map<VkDescriptorType, uint32_t> &typeCounts, bool updateAfterBind) {
         thread_local std::vector<VkDescriptorPoolSize> poolSizes;
         poolSizes.clear();
 
@@ -2290,7 +2299,7 @@ namespace plume {
         poolInfo.pPoolSizes = !poolSizes.empty() ? poolSizes.data() : nullptr;
         poolInfo.poolSizeCount = uint32_t(poolSizes.size());
 
-        if (lastRangeIsBoundless) {
+        if (updateAfterBind) {
             poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
         }
 

@@ -98,11 +98,12 @@ namespace plume {
             return returnValue;
         }
 
-        void end(bool lastRangeIsBoundless = false, uint32_t boundlessRangeSize = 0) {
+        void end(bool lastRangeIsBoundless = false, uint32_t boundlessRangeSize = 0, bool updateAfterBind = false) {
             assert(open && "Builder must be open.");
 
             descriptorSetDesc.lastRangeIsBoundless = lastRangeIsBoundless;
             descriptorSetDesc.boundlessRangeSize = boundlessRangeSize;
+            descriptorSetDesc.updateAfterBind = updateAfterBind;
             descriptorSetDesc.descriptorRanges = descriptorRanges.data();
             open = false;
         }

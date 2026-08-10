@@ -1497,14 +1497,21 @@ namespace plume {
         uint32_t descriptorRangesCount = 0;
         bool lastRangeIsBoundless = false;
         uint32_t boundlessRangeSize = 0;
+        // Allows descriptor contents to be changed while command buffers that
+        // reference the set are in flight without requiring a variable-count
+        // runtime array.  Mobile drivers can support update-after-bind more
+        // reliably than the combination of update-after-bind and variable
+        // descriptor count.
+        bool updateAfterBind = false;
 
         RenderDescriptorSetDesc() = default;
         
-        RenderDescriptorSetDesc(const RenderDescriptorRange *descriptorRanges, uint32_t descriptorRangesCount, bool lastRangeIsBoundless = false, uint32_t boundlessRangeSize = 0) {
+        RenderDescriptorSetDesc(const RenderDescriptorRange *descriptorRanges, uint32_t descriptorRangesCount, bool lastRangeIsBoundless = false, uint32_t boundlessRangeSize = 0, bool updateAfterBind = false) {
             this->descriptorRanges = descriptorRanges;
             this->descriptorRangesCount = descriptorRangesCount;
             this->lastRangeIsBoundless = lastRangeIsBoundless;
             this->boundlessRangeSize = boundlessRangeSize;
+            this->updateAfterBind = updateAfterBind;
         }
     };
 

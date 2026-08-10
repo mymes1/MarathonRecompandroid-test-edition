@@ -839,12 +839,18 @@ static void DestructTempResources()
                 g_userHeap.Free(texture->mappedMemory);
             }
 
-            g_textureDescriptorSet->setTexture(texture->descriptorIndex, nullptr, {});
+            g_textureDescriptorSet->setTexture(texture->descriptorIndex,
+                g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
+                RenderTextureLayout::SHADER_READ,
+                g_blankTextureViews[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get());
             g_textureDescriptorAllocator.free(texture->descriptorIndex);
 
             if (texture->patchedTexture != nullptr)
             {
-                g_textureDescriptorSet->setTexture(texture->patchedTexture->descriptorIndex, nullptr, {});
+                g_textureDescriptorSet->setTexture(texture->patchedTexture->descriptorIndex,
+                    g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
+                    RenderTextureLayout::SHADER_READ,
+                    g_blankTextureViews[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get());
                 g_textureDescriptorAllocator.free(texture->patchedTexture->descriptorIndex);
             }
 
@@ -872,7 +878,10 @@ static void DestructTempResources()
 
             if (surface->descriptorIndex != NULL)
             {
-                g_textureDescriptorSet->setTexture(surface->descriptorIndex, nullptr, {});
+                g_textureDescriptorSet->setTexture(surface->descriptorIndex,
+                    g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
+                    RenderTextureLayout::SHADER_READ,
+                    g_blankTextureViews[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get());
                 g_textureDescriptorAllocator.free(surface->descriptorIndex);
             }
 
@@ -1686,30 +1695,13 @@ static std::unique_ptr<RenderPipeline> g_imAdditivePipeline;
 template<typename T>
 static void ExecuteCopyCommandList(const T& function)
 {
-    // Texture loading normally runs on the render thread while the current
-    // graphics command list is open. On Mali, recording uploads into the
-    // separate copy list forces a submit + fence wait for every texture and
-    // leaves the graphics queue without an explicit ownership handoff. Keep
-    // the upload in the frame command buffer instead; the caller retains the
-    // upload buffer in g_tempBuffers until that frame fence completes.
-    if (g_isMali && g_graphicsCommandListOpen)
-    {
-        RenderCommandList* previousCommandList = g_activeCopyCommandList;
-        g_activeCopyCommandList = g_commandLists[g_frame].get();
-        function();
-        g_activeCopyCommandList = previousCommandList;
-        return;
-    }
-
     std::lock_guard lock(g_copyMutex);
 
-    // A loader thread cannot append to the render thread's command buffer.
-    // On Mali the copy queue is an alias of the graphics queue, so submit the
-    // upload there and wait for completion before the guest can bind the
-    // texture.  This is intentionally serialized: a second command buffer on
-    // the same Vulkan queue has no implicit ordering with an in-progress frame
-    // command buffer, and Mali-G57 otherwise intermittently samples an image
-    // while its copy is still pending.
+    // Never append a loader upload to an open frame command buffer.  On Mali
+    // the copy queue aliases the graphics queue, so this submission is ordered
+    // on that queue and the fence makes the texture safe before its descriptor
+    // is exposed to guest rendering.  This also keeps render-thread and loader-
+    // thread recording from sharing a VkCommandBuffer.
     g_copyCommandList->begin();
     RenderCommandList* previousCommandList = g_activeCopyCommandList;
     g_activeCopyCommandList = g_copyCommandList.get();
@@ -1827,11 +1819,10 @@ static void CreateImGuiBackend()
             ActiveCopyCommandList()->copyTextureRegion(
                 RenderTextureCopyLocation::Subresource(g_imFontTexture->texture, 0),
                 RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
+            ActiveCopyCommandList()->barriers(RenderBarrierStage::GRAPHICS,
+                RenderTextureBarrier(g_imFontTexture->texture, RenderTextureLayout::SHADER_READ));
         });
-    if (g_isMali && g_graphicsCommandListOpen)
-        g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
-
-    g_imFontTexture->layout = RenderTextureLayout::COPY_DEST;
+    g_imFontTexture->layout = RenderTextureLayout::SHADER_READ;
 
     RenderTextureViewDesc textureViewDesc;
     textureViewDesc.format = textureDesc.format;
@@ -1851,12 +1842,12 @@ static void CreateImGuiBackend()
     RenderDescriptorSetBuilder descriptorSetBuilder;
     descriptorSetBuilder.begin();
     descriptorSetBuilder.addTexture(0, g_textureDescriptorSize);
-    descriptorSetBuilder.end(true, g_textureDescriptorSize);
+    descriptorSetBuilder.end(!g_isMali, g_textureDescriptorSize, g_isMali);
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
 
     descriptorSetBuilder.begin();
     descriptorSetBuilder.addSampler(0, g_samplerDescriptorSize);
-    descriptorSetBuilder.end(true, g_samplerDescriptorSize);
+    descriptorSetBuilder.end(!g_isMali, g_samplerDescriptorSize, g_isMali);
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
 
     pipelineLayoutBuilder.addPushConstant(0, 2, sizeof(ImGuiPushConstants), RenderShaderStageFlag::VERTEX | RenderShaderStageFlag::PIXEL);
@@ -2549,7 +2540,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     RenderDescriptorSetBuilder descriptorSetBuilder;
     descriptorSetBuilder.begin();
     descriptorSetBuilder.addTexture(0, g_textureDescriptorSize);
-    descriptorSetBuilder.end(true, g_textureDescriptorSize);
+    descriptorSetBuilder.end(!g_isMali, g_textureDescriptorSize, g_isMali);
     
     g_textureDescriptorSet = descriptorSetBuilder.create(g_device.get());
     
@@ -2608,7 +2599,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     
     descriptorSetBuilder.begin();
     descriptorSetBuilder.addSampler(0, g_samplerDescriptorSize);
-    descriptorSetBuilder.end(true, g_samplerDescriptorSize);
+    descriptorSetBuilder.end(!g_isMali, g_samplerDescriptorSize, g_isMali);
     
     g_samplerDescriptorSet = descriptorSetBuilder.create(g_device.get());
     auto& [descriptorIndex, sampler] = g_samplerStates[XXH3_64bits(&g_samplerDescs[0], sizeof(RenderSamplerDesc))];
@@ -2940,6 +2931,9 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
     g_commandLists[g_frame]->copyTextureRegion(
         RenderTextureCopyLocation::Subresource(args.texture->texture, 0),
         RenderTextureCopyLocation::PlacedFootprint(allocation.buffer, args.texture->format, args.texture->width, args.texture->height, 1, rowWidth, allocation.offset));
+    g_commandLists[g_frame]->barriers(RenderBarrierStage::GRAPHICS,
+        RenderTextureBarrier(args.texture->texture, RenderTextureLayout::SHADER_READ));
+    args.texture->layout = RenderTextureLayout::SHADER_READ;
 }
 
 static void* LockBuffer(GuestBuffer* buffer, uint32_t flags)
@@ -2974,9 +2968,10 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
             }
         };
 
-    if (useCopyQueue && g_capabilities.gpuUploadHeap)
+    if ((useCopyQueue && g_capabilities.gpuUploadHeap) || g_isMali)
     {
         copyBuffer(reinterpret_cast<T*>(buffer->buffer->map()));
+        buffer->buffer->flushMappedRange(0, buffer->dataSize);
         buffer->buffer->unmap();
 
     }
@@ -4119,6 +4114,13 @@ static GuestTexture* CreateTexture(uint32_t width, uint32_t height, uint32_t dep
 
 static RenderHeapType GetBufferHeapType()
 {
+#if defined(__ANDROID__)
+    // Avoid staged device-local vertex/index uploads on Mali-G57. Direct
+    // writes to a host-visible buffer plus an explicit flush remove the
+    // transfer/barrier dependency that can leave geometry fetch stale.
+    if (g_isMali)
+        return RenderHeapType::UPLOAD;
+#endif
     return g_capabilities.gpuUploadHeap ? RenderHeapType::GPU_UPLOAD : RenderHeapType::DEFAULT;
 }
 
@@ -7004,7 +7006,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
 
         texture.textureHolder = g_device->createTexture(desc);
         texture.texture = texture.textureHolder.get();
-        texture.layout = RenderTextureLayout::COPY_DEST;
+        texture.layout = RenderTextureLayout::UNKNOWN;
 
         RenderTextureViewDesc viewDesc;
         viewDesc.format = desc.format;
@@ -7208,9 +7210,10 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                         RenderTextureCopyLocation::Subresource(texture.texture, i % desc.mipLevels, i / desc.mipLevels),
                         RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), uploadFormat, slice.width, slice.height, slice.depth, footprintRowWidth, slice.dstOffset));
                 }
+                ActiveCopyCommandList()->barriers(RenderBarrierStage::GRAPHICS,
+                    RenderTextureBarrier(texture.texture, RenderTextureLayout::SHADER_READ));
             });
-        if (g_isMali && g_graphicsCommandListOpen)
-            g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
+        texture.layout = RenderTextureLayout::SHADER_READ;
 
         return true;
     }
@@ -7224,7 +7227,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
             texture.textureHolder = g_device->createTexture(RenderTextureDesc::Texture2D(width, height, 1, RenderFormat::R8G8B8A8_UNORM));
             texture.texture = texture.textureHolder.get();
             texture.viewDimension = RenderTextureViewDimension::TEXTURE_2D;
-            texture.layout = RenderTextureLayout::COPY_DEST;
+            texture.layout = RenderTextureLayout::UNKNOWN;
 
             texture.descriptorIndex = g_textureDescriptorAllocator.allocate();
             g_textureDescriptorSet->setTexture(texture.descriptorIndex, texture.texture, RenderTextureLayout::SHADER_READ);
@@ -7263,9 +7266,10 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                     ActiveCopyCommandList()->copyTextureRegion(
                         RenderTextureCopyLocation::Subresource(texture.texture, 0),
                         RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
+                    ActiveCopyCommandList()->barriers(RenderBarrierStage::GRAPHICS,
+                        RenderTextureBarrier(texture.texture, RenderTextureLayout::SHADER_READ));
                 });
-            if (g_isMali && g_graphicsCommandListOpen)
-                g_tempBuffers[g_frame].emplace_back(std::move(uploadBuffer));
+            texture.layout = RenderTextureLayout::SHADER_READ;
             return true;
         }
     }

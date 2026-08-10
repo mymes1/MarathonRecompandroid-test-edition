@@ -8,3 +8,9 @@ Vulkan texture wrappers kept in movable containers must transfer registry member
 **Why:** On SM-X110, rejected swapchain barriers caused black/tearing output, while texture copies recorded from loader threads could race graphics consumption when command-list state was thread-local.
 
 **How to apply:** Use explicit move-only VulkanTexture semantics for movable wrapper storage, and serialize Mali uploads on the graphics queue with completion before exposing the texture to guest rendering.
+
+For Mali-G57 geometry, prefer host-visible vertex/index buffers with explicit mapped-range flushes over device-local destinations fed by staged copy commands.
+
+**Why:** The device-local staging path continued to produce stretched/morphed geometry after image barrier fixes, indicating the Mali driver was not reliably honoring the renderer's generic transfer-to-vertex dependency.
+
+**How to apply:** Select the upload heap for Mali vertex/index buffers and avoid adding a transfer command or temporary staging buffer for those resources.
