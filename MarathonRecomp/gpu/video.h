@@ -6,6 +6,7 @@
 
 #include <plume_render_interface.h>
 #include <os/logger.h>
+#include <array>
 #include <cstdint>
 
 #define D3DCLEAR_TARGET  0x1
@@ -207,6 +208,17 @@ struct GuestBufferDesc
     be<uint32_t> fvf;
 };
 
+struct GuestVertexDeclaration;
+
+struct MaliVertexUploadCache
+{
+    RenderBufferReference reference{};
+    uint64_t frameSerial = 0;
+    uint64_t snapshotGeneration = 0;
+    const GuestVertexDeclaration* declaration = nullptr;
+    uint32_t stride = 0;
+};
+
 // VertexBuffer/IndexBuffer
 struct GuestBuffer : GuestResource
 {
@@ -226,6 +238,7 @@ struct GuestBuffer : GuestResource
     uint64_t maliFrameSerial = 0;
     uint64_t maliFrameSnapshotGeneration = 0;
     uint32_t maliFrameElementSize = 0;
+    std::array<MaliVertexUploadCache, 16> maliVertexFrameCache{};
 };
 
 struct GuestSurfaceDesc

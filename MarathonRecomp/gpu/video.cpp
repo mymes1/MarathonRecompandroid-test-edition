@@ -700,18 +700,54 @@ struct UploadAllocator
         if constexpr (TByteSwap)
         {
             auto destination = reinterpret_cast<T*>(result.memory);
+            const size_t elementCount = size / sizeof(T);
 
-            for (size_t i = 0; i < size; i += sizeof(T))
+            for (size_t i = 0; i < elementCount; ++i)
             {
                 *destination = ByteSwap(*memory);
                 ++destination;
                 ++memory;
             }
+
+            // A malformed guest lock should never make the conversion loop
+            // walk past either allocation.  Preserve any incomplete tail
+            // without conversion; callers validate the element-sized portion
+            // before using it for indexed/vertex fetches.
+            const size_t convertedSize = elementCount * sizeof(T);
+            if (convertedSize != size)
+                memcpy(result.memory + convertedSize, memory, size - convertedSize);
         }
         else
         {
             memcpy(result.memory, memory, size);
         }
+
+        return result;
+    }
+
+    UploadAllocation allocateByteSwapped32(const void* memory, uint32_t size, uint32_t alignment)
+    {
+        auto result = allocate(size, alignment);
+        const auto* source = static_cast<const uint8_t*>(memory);
+        auto* destination = result.memory;
+
+        // Vertex streams are byte-structured data, not arrays of uint32_t.
+        // Swap each guest-endian 32-bit word without imposing alignment or
+        // aliasing requirements on the source/destination pointers. Preserve
+        // an incomplete tail verbatim; a vertex stride may legally contain
+        // byte-sized fields after its final full word.
+        const uint32_t wordCount = size / sizeof(uint32_t);
+        for (uint32_t i = 0; i < wordCount; ++i)
+        {
+            uint32_t word;
+            memcpy(&word, source + i * sizeof(uint32_t), sizeof(word));
+            word = ByteSwap(word);
+            memcpy(destination + i * sizeof(uint32_t), &word, sizeof(word));
+        }
+
+        const uint32_t convertedSize = wordCount * sizeof(uint32_t);
+        if (convertedSize != size)
+            memcpy(destination + convertedSize, source + convertedSize, size - convertedSize);
 
         return result;
     }
@@ -821,16 +857,30 @@ struct PrimitiveIndexData
         switch (PrimitiveType)
         {
         case D3DPT_TRIANGLEFAN:
+            if (guestPrimCount < 3)
+                return 0;
             primCount = guestPrimCount - 2;
             indexCountPerPrimitive = 3; 
             break;
         case D3DPT_QUADLIST:
+            if (guestPrimCount < 4)
+                return 0;
             primCount = guestPrimCount / 4;
             indexCountPerPrimitive = 6;
             break;
         default:
             assert(false && "Unknown primitive type.");
             break;
+        }
+
+        if (primCount > std::numeric_limits<uint32_t>::max() / indexCountPerPrimitive ||
+            (PrimitiveType == D3DPT_TRIANGLEFAN
+                ? primCount > std::numeric_limits<uint16_t>::max() - 1
+                : primCount > (std::numeric_limits<uint16_t>::max() + 1u) / 4))
+        {
+            LOGF_WARNING("Ignoring oversized generated index draw with {} primitives.",
+                guestPrimCount);
+            return 0;
         }
 
         uint32_t indexCount = primCount * indexCountPerPrimitive;
@@ -1012,6 +1062,17 @@ static void DestructTempResources()
             if (buffer->mappedMemory != nullptr)
                 g_userHeap.Free(buffer->mappedMemory);
 
+            // The frame upload reference points into a per-frame allocator,
+            // not into the guest buffer.  Clear it before destroying the
+            // guest object so a later refresh cannot mistake a recycled
+            // reference for a live binding.
+            buffer->maliGuestSnapshot.reset();
+            buffer->maliGuestSnapshotValid = false;
+            buffer->maliFrameReference = {};
+            buffer->maliFrameSerial = 0;
+            buffer->maliFrameSnapshotGeneration = 0;
+            buffer->maliFrameElementSize = 0;
+
             buffer->~GuestBuffer();
             break;
         }
@@ -1055,11 +1116,20 @@ static void DestructTempResources()
 }
 
 template<typename T>
-static RenderBufferReference UploadMaliGuestBuffer(GuestBuffer* buffer)
+static RenderBufferReference UploadMaliGuestIndexBuffer(GuestBuffer* buffer)
 {
     assert(buffer != nullptr);
 
     const uint32_t elementSize = sizeof(T);
+    if (buffer->dataSize == 0 || buffer->dataSize % elementSize != 0)
+    {
+        LOGF_WARNING("Ignoring malformed Mali buffer upload: {} bytes is not a multiple of {}.",
+            buffer->dataSize, elementSize);
+        buffer->maliFrameReference = {};
+        buffer->maliFrameSerial = 0;
+        return {};
+    }
+
     if (buffer->maliFrameSerial == g_frameUploadSerial[g_frame] &&
         buffer->maliFrameSnapshotGeneration == buffer->maliGuestSnapshotGeneration &&
         buffer->maliFrameElementSize == elementSize &&
@@ -1071,7 +1141,13 @@ static RenderBufferReference UploadMaliGuestBuffer(GuestBuffer* buffer)
     const void* source = buffer->maliGuestSnapshotValid
         ? buffer->maliGuestSnapshot.get()
         : buffer->mappedMemory;
-    assert(source != nullptr);
+    if (source == nullptr)
+    {
+        LOGF_WARNING("Ignoring Mali upload with no source memory.", "");
+        buffer->maliFrameReference = {};
+        buffer->maliFrameSerial = 0;
+        return {};
+    }
 
     auto allocation = g_uploadAllocators[g_frame].allocate<true>(
         reinterpret_cast<const T*>(source),
@@ -1084,10 +1160,200 @@ static RenderBufferReference UploadMaliGuestBuffer(GuestBuffer* buffer)
     return buffer->maliFrameReference;
 }
 
-static RenderBufferReference GetMaliVertexReference(GuestBuffer* buffer, uint32_t offset)
+static uint32_t VertexElementByteSize(uint32_t type)
+{
+    switch (type)
+    {
+    case D3DDECLTYPE_FLOAT1:
+        return 4;
+    case D3DDECLTYPE_FLOAT2:
+        return 8;
+    case D3DDECLTYPE_FLOAT3:
+        return 12;
+    case D3DDECLTYPE_FLOAT4:
+        return 16;
+    case D3DDECLTYPE_D3DCOLOR:
+    case D3DDECLTYPE_UBYTE4:
+    case D3DDECLTYPE_UBYTE4_2:
+    case D3DDECLTYPE_UBYTE4N:
+    case D3DDECLTYPE_UBYTE4N_2:
+    case D3DDECLTYPE_UINT1:
+    case D3DDECLTYPE_UDEC3:
+    case D3DDECLTYPE_DEC3N:
+    case D3DDECLTYPE_DEC3N_2:
+    case D3DDECLTYPE_DEC3N_3:
+        return 4;
+    case D3DDECLTYPE_SHORT2:
+    case D3DDECLTYPE_SHORT2N:
+    case D3DDECLTYPE_USHORT2N:
+    case D3DDECLTYPE_FLOAT16_2:
+        return 4;
+    case D3DDECLTYPE_SHORT4:
+    case D3DDECLTYPE_SHORT4N:
+    case D3DDECLTYPE_USHORT4N:
+    case D3DDECLTYPE_FLOAT16_4:
+        return 8;
+    default:
+        return 0;
+    }
+}
+
+static bool VertexElementUses16BitComponents(uint32_t type)
+{
+    switch (type)
+    {
+    case D3DDECLTYPE_SHORT2:
+    case D3DDECLTYPE_SHORT4:
+    case D3DDECLTYPE_SHORT2N:
+    case D3DDECLTYPE_SHORT4N:
+    case D3DDECLTYPE_USHORT2N:
+    case D3DDECLTYPE_USHORT4N:
+    case D3DDECLTYPE_FLOAT16_2:
+    case D3DDECLTYPE_FLOAT16_4:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static void SwapMaliVertexElements(
+    uint8_t* destination,
+    uint32_t dataSize,
+    uint32_t stream,
+    uint32_t stride,
+    const GuestVertexDeclaration* declaration)
+{
+    if (declaration == nullptr || stride == 0)
+        return;
+
+    // Vertex data is a byte stream with fields of different widths. Swapping
+    // every four bytes is only correct for an all-32-bit declaration and
+    // corrupts SHORT/FLOAT16/UBYTE fields in the mixed declarations used by
+    // character and cutscene meshes.
+    const uint32_t vertexCount = dataSize / stride;
+    for (uint32_t vertex = 0; vertex < vertexCount; ++vertex)
+    {
+        uint8_t* vertexData = destination + vertex * stride;
+
+        for (uint32_t i = 0; i < declaration->vertexElementCount; ++i)
+        {
+            const GuestVertexElement& element = declaration->vertexElements[i];
+            if (element.stream == 0xFF || element.type == D3DDECLTYPE_UNUSED)
+                break;
+            if (element.stream != stream)
+                continue;
+
+            const uint32_t byteSize = VertexElementByteSize(element.type);
+            const uint32_t offset = element.offset;
+            if (byteSize == 0 || offset > stride || byteSize > stride - offset)
+            {
+                LOGF_WARNING(
+                    "Ignoring malformed vertex element (stream {}, offset {}, size {}, stride {}).",
+                    stream, offset, byteSize, stride);
+                continue;
+            }
+
+            uint8_t* field = vertexData + offset;
+            if (VertexElementUses16BitComponents(element.type))
+            {
+                for (uint32_t component = 0; component < byteSize; component += sizeof(uint16_t))
+                {
+                    uint16_t value;
+                    memcpy(&value, field + component, sizeof(value));
+                    value = ByteSwap(value);
+                    memcpy(field + component, &value, sizeof(value));
+                }
+            }
+            else if (element.type != D3DDECLTYPE_D3DCOLOR &&
+                     element.type != D3DDECLTYPE_UBYTE4 &&
+                     element.type != D3DDECLTYPE_UBYTE4_2 &&
+                     element.type != D3DDECLTYPE_UBYTE4N &&
+                     element.type != D3DDECLTYPE_UBYTE4N_2)
+            {
+                for (uint32_t component = 0; component < byteSize; component += sizeof(uint32_t))
+                {
+                    uint32_t value;
+                    memcpy(&value, field + component, sizeof(value));
+                    value = ByteSwap(value);
+                    memcpy(field + component, &value, sizeof(value));
+                }
+            }
+        }
+    }
+}
+
+static RenderBufferReference UploadMaliGuestVertexBuffer(
+    GuestBuffer* buffer,
+    uint32_t stream)
+{
+    assert(buffer != nullptr);
+    assert(stream < std::size(buffer->maliVertexFrameCache));
+
+    const uint32_t stride = g_pipelineState.vertexStrides[stream];
+    const GuestVertexDeclaration* declaration = g_pipelineState.vertexDeclaration;
+    auto& cache = buffer->maliVertexFrameCache[stream];
+
+    if (buffer->dataSize == 0 || stride == 0)
+    {
+        LOGF_WARNING("Ignoring empty or unstrided Mali vertex buffer.", "");
+        cache = {};
+        return {};
+    }
+
+    if (cache.frameSerial == g_frameUploadSerial[g_frame] &&
+        cache.snapshotGeneration == buffer->maliGuestSnapshotGeneration &&
+        cache.declaration == declaration &&
+        cache.stride == stride &&
+        cache.reference.ref != nullptr)
+    {
+        return cache.reference;
+    }
+
+    const void* source = buffer->maliGuestSnapshotValid
+        ? buffer->maliGuestSnapshot.get()
+        : buffer->mappedMemory;
+    if (source == nullptr)
+    {
+        LOGF_WARNING("Ignoring Mali vertex upload with no source memory.", "");
+        buffer->maliFrameReference = {};
+        buffer->maliFrameSerial = 0;
+        return {};
+    }
+
+    // Keep the guest snapshot raw and perform exactly one conversion into the
+    // host-endian upload. This is also safe for byte-sized tails and for
+    // fields that are not aligned to a 32-bit boundary.
+    auto allocation = g_uploadAllocators[g_frame].allocate(
+        buffer->dataSize, alignof(uint32_t));
+    memcpy(allocation.memory, source, buffer->dataSize);
+    SwapMaliVertexElements(
+        allocation.memory, buffer->dataSize, stream, stride, declaration);
+
+    cache.reference = allocation.buffer->at(allocation.offset);
+    cache.frameSerial = g_frameUploadSerial[g_frame];
+    cache.snapshotGeneration = buffer->maliGuestSnapshotGeneration;
+    cache.declaration = declaration;
+    cache.stride = stride;
+    return cache.reference;
+}
+
+static RenderBufferReference GetMaliVertexReference(
+    GuestBuffer* buffer,
+    uint32_t stream,
+    uint32_t offset)
 {
     if (buffer == nullptr)
         return {};
+
+    if (stream >= std::size(g_vertexBuffers))
+        return {};
+
+    if (offset > buffer->dataSize)
+    {
+        LOGF_WARNING("Ignoring vertex stream offset {} beyond buffer size {}.",
+            offset, buffer->dataSize);
+        return {};
+    }
 
     // Reuse the current frame's immutable upload. The cache is invalidated by
     // the frame serial or by the unlock snapshot generation, so repeated draws
@@ -1095,7 +1361,7 @@ static RenderBufferReference GetMaliVertexReference(GuestBuffer* buffer, uint32_
     if (buffer->mappedMemory != nullptr)
     {
         const RenderBufferReference reference =
-            UploadMaliGuestBuffer<uint32_t>(buffer);
+            UploadMaliGuestVertexBuffer(buffer, stream);
         return RenderBufferReference(reference.ref, reference.offset + offset);
     }
 
@@ -1110,8 +1376,8 @@ static RenderBufferReference GetMaliIndexReference(GuestBuffer* buffer)
     if (buffer->mappedMemory != nullptr)
     {
         if (buffer->guestFormat == D3DFMT_INDEX32)
-            return UploadMaliGuestBuffer<uint32_t>(buffer);
-        return UploadMaliGuestBuffer<uint16_t>(buffer);
+            return UploadMaliGuestIndexBuffer<uint32_t>(buffer);
+        return UploadMaliGuestIndexBuffer<uint16_t>(buffer);
     }
 
     return buffer->buffer != nullptr ? buffer->buffer->at(0) : RenderBufferReference{};
@@ -1129,7 +1395,7 @@ static void RefreshMaliActiveBufferViews()
             continue;
 
         const RenderBufferReference reference =
-            GetMaliVertexReference(buffer, g_vertexBufferOffsets[slot]);
+            GetMaliVertexReference(buffer, slot, g_vertexBufferOffsets[slot]);
         if (g_vertexBufferViews[slot].buffer != reference)
         {
             g_vertexBufferViews[slot].buffer = reference;
@@ -3043,6 +3309,13 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
 
     g_commandLists[g_frame]->barriers(RenderBarrierStage::NONE, blankTextureBarriers, std::size(blankTextureBarriers));
 
+    // The bootstrap command list stays open until the first guest Present.
+    // CreateDevice can load achievement textures before that Present, so
+    // making startup uploads wait for this list would deadlock the guest
+    // before the render thread gets a chance to close it. Normal frame lists
+    // are still protected by the flag set in BeginCommandList().
+    g_graphicsCommandListOpen.store(false, std::memory_order_release);
+
     return true;
 }
 
@@ -3340,7 +3613,8 @@ static void UnlockBuffer(GuestBuffer* buffer)
 
 static void ProcUnlockBuffer16(const RenderCommand& cmd)
 {
-    UnlockBuffer<uint16_t>(cmd.unlockBuffer.buffer, false);
+    if (!cmd.unlockBuffer.buffer->lockedReadOnly)
+        UnlockBuffer<uint16_t>(cmd.unlockBuffer.buffer, false);
     if (cmd.unlockBuffer.completion != nullptr)
     {
         cmd.unlockBuffer.completion->store(true, std::memory_order_release);
@@ -3350,7 +3624,8 @@ static void ProcUnlockBuffer16(const RenderCommand& cmd)
 
 static void ProcUnlockBuffer32(const RenderCommand& cmd)
 {
-    UnlockBuffer<uint32_t>(cmd.unlockBuffer.buffer, false);
+    if (!cmd.unlockBuffer.buffer->lockedReadOnly)
+        UnlockBuffer<uint32_t>(cmd.unlockBuffer.buffer, false);
     if (cmd.unlockBuffer.completion != nullptr)
     {
         cmd.unlockBuffer.completion->store(true, std::memory_order_release);
@@ -4200,8 +4475,6 @@ static void ProcExecuteCommandList(const RenderCommand& cmd)
     // vertex/index data, or staging data.
     g_uploadAllocators[g_frame].flush();
     commandList->end();
-    g_graphicsCommandListOpen.store(false, std::memory_order_release);
-    g_graphicsCommandListClosed.notify_all();
 
     if (g_swapChainValid)
     {
@@ -4221,6 +4494,12 @@ static void ProcExecuteCommandList(const RenderCommand& cmd)
     }
 
     g_commandListStates[g_frame] = true;
+    // Keep loader uploads blocked until this frame has actually been queued.
+    // vkEndCommandBuffer alone does not establish queue ordering; otherwise a
+    // loader can submit its Mali upload in the gap between ending this frame
+    // and vkQueueSubmit, making the upload run before the frame it follows.
+    g_graphicsCommandListOpen.store(false, std::memory_order_release);
+    g_graphicsCommandListClosed.notify_all();
 
     g_executedCommandList = true;
     g_executedCommandList.notify_one();
@@ -6053,6 +6332,28 @@ static void SetPrimitiveType(uint32_t primitiveType)
     SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.primitiveTopology, ConvertPrimitiveType(primitiveType));
 }
 
+static uint64_t PrimitiveVertexCount(uint32_t primitiveType, uint32_t primitiveCount)
+{
+    switch (primitiveType)
+    {
+    case D3DPT_POINTLIST:
+        return primitiveCount;
+    case D3DPT_LINELIST:
+        return uint64_t(primitiveCount) * 2;
+    case D3DPT_LINESTRIP:
+        return primitiveCount != 0 ? uint64_t(primitiveCount) + 1 : 0;
+    case D3DPT_TRIANGLELIST:
+        return uint64_t(primitiveCount) * 3;
+    case D3DPT_TRIANGLESTRIP:
+    case D3DPT_TRIANGLEFAN:
+        return primitiveCount != 0 ? uint64_t(primitiveCount) + 2 : 0;
+    case D3DPT_QUADLIST:
+        return uint64_t(primitiveCount) * 4;
+    default:
+        return 0;
+    }
+}
+
 static void DrawPrimitive(GuestDevice* device, uint32_t primitiveType, uint32_t startVertex, uint32_t primitiveCount) 
 {
     LocalRenderCommandQueue queue;
@@ -6080,6 +6381,19 @@ static void ProcDrawPrimitive(const RenderCommand& cmd)
     SetPrimitiveType(args.primitiveType);
 
     FlushRenderStateForRenderThread();
+
+    const uint64_t vertexCount = PrimitiveVertexCount(args.primitiveType, args.primitiveCount);
+    if (vertexCount == 0)
+        return;
+
+    const uint32_t stride = g_inputSlots[0].stride;
+    const uint64_t endByte = (uint64_t(args.startVertex) + vertexCount) * stride;
+    if (stride == 0 || endByte > g_vertexBufferViews[0].size)
+    {
+        LOGF_WARNING("Skipping out-of-range non-indexed draw: start {}, count {}, stride {}, view {}.",
+            args.startVertex, vertexCount, stride, g_vertexBufferViews[0].size);
+        return;
+    }
 
     auto& commandList = g_commandLists[g_frame];
     commandList->drawInstanced(args.primitiveCount, 1, args.startVertex, 0);
@@ -6110,11 +6424,39 @@ static void ProcDrawIndexedPrimitive(const RenderCommand& cmd)
     SetPrimitiveType(args.primitiveType);
     FlushRenderStateForRenderThread();
 
+    const uint64_t indexCount = PrimitiveVertexCount(args.primitiveType, args.primCount);
+    if (indexCount == 0)
+        return;
+
+    const uint32_t indexSize =
+        g_indexBufferView.format == RenderFormat::R32_UINT ? sizeof(uint32_t) : sizeof(uint16_t);
+    if (indexCount == 0 ||
+        args.startIndex > g_indexBufferView.size / indexSize ||
+        indexCount > (g_indexBufferView.size / indexSize - args.startIndex))
+    {
+        LOGF_WARNING("Skipping out-of-range indexed draw: start {}, count {}, index view {}.",
+            args.startIndex, indexCount, g_indexBufferView.size);
+        return;
+    }
+
     g_commandLists[g_frame]->drawIndexedInstanced(args.primCount, 1, args.startIndex, args.baseVertexIndex, 0);
 }
 
 static void DrawPrimitiveUP(GuestDevice* device, uint32_t primitiveType, uint32_t primitiveCount, void* vertexStreamZeroData, uint32_t vertexStreamZeroStride)
 {
+    const uint64_t vertexCount = PrimitiveVertexCount(primitiveType, primitiveCount);
+    if (vertexCount == 0 ||
+        vertexStreamZeroStride == 0 ||
+        vertexCount > std::numeric_limits<uint32_t>::max() / vertexStreamZeroStride)
+    {
+        LOGF_WARNING("Skipping malformed DrawPrimitiveUP: type {}, primitives {}, stride {}.",
+            primitiveType, primitiveCount, vertexStreamZeroStride);
+        return;
+    }
+
+    const uint32_t vertexDataSize =
+        static_cast<uint32_t>(vertexCount * vertexStreamZeroStride);
+
     LocalRenderCommandQueue queue;
     FlushRenderStateForMainThread(device, queue);
 
@@ -6122,8 +6464,8 @@ static void DrawPrimitiveUP(GuestDevice* device, uint32_t primitiveType, uint32_
     cmd.type = RenderCommandType::DrawPrimitiveUP;
     cmd.drawPrimitiveUP.primitiveType = primitiveType;
     cmd.drawPrimitiveUP.primitiveCount = primitiveCount;
-    cmd.drawPrimitiveUP.vertexStreamZeroData = g_intermediaryUploadAllocator.allocate(vertexStreamZeroData, primitiveCount * vertexStreamZeroStride);
-    cmd.drawPrimitiveUP.vertexStreamZeroSize = primitiveCount * vertexStreamZeroStride;
+    cmd.drawPrimitiveUP.vertexStreamZeroData = g_intermediaryUploadAllocator.allocate(vertexStreamZeroData, vertexDataSize);
+    cmd.drawPrimitiveUP.vertexStreamZeroSize = vertexDataSize;
     cmd.drawPrimitiveUP.vertexStreamZeroStride = vertexStreamZeroStride;
     cmd.drawPrimitiveUP.csdFilterState = g_csdFilterState;
     
@@ -6134,13 +6476,57 @@ static void ProcDrawPrimitiveUP(const RenderCommand& cmd)
 {
     const auto& args = cmd.drawPrimitiveUP;
 
+    // DrawPrimitiveUP supplies the complete vertex stream for this draw.
+    // Do not leave guest streams from a previous mesh active for declarations
+    // that reference additional slots, and do not let the Mali refresh path
+    // replace stream 0 with the old guest buffer.
+    for (uint32_t slot = 0; slot < std::size(g_vertexBuffers); ++slot)
+    {
+        g_vertexBuffers[slot] = nullptr;
+        g_vertexBufferOffsets[slot] = 0;
+        g_vertexBufferViews[slot] = {};
+        g_inputSlots[slot].stride = slot == 0 ? args.vertexStreamZeroStride : 0;
+    }
+    g_dirtyStates.vertexStreamFirst = 0;
+    g_dirtyStates.vertexStreamLast = std::size(g_vertexBufferViews) - 1;
+
     SetPrimitiveType(args.primitiveType);
     SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.vertexStrides[0], args.vertexStreamZeroStride);
 
-    auto allocation = g_uploadAllocators[g_frame].allocate<true>(reinterpret_cast<const uint32_t*>(args.vertexStreamZeroData), args.vertexStreamZeroSize, 0x4);
+    const uint64_t vertexCount = PrimitiveVertexCount(args.primitiveType, args.primitiveCount);
+    if (vertexCount == 0 ||
+        args.vertexStreamZeroStride == 0 ||
+        vertexCount > std::numeric_limits<uint32_t>::max() / args.vertexStreamZeroStride ||
+        args.vertexStreamZeroSize != vertexCount * args.vertexStreamZeroStride)
+    {
+        LOGF_WARNING("Skipping malformed DrawPrimitiveUP vertex data: {} bytes, stride {}.",
+            args.vertexStreamZeroSize, args.vertexStreamZeroStride);
+        return;
+    }
+
+    UploadAllocation allocation;
+    if (g_isMali)
+    {
+        allocation = g_uploadAllocators[g_frame].allocate(
+            args.vertexStreamZeroSize, alignof(uint32_t));
+        memcpy(allocation.memory, args.vertexStreamZeroData, args.vertexStreamZeroSize);
+        SwapMaliVertexElements(
+            allocation.memory,
+            args.vertexStreamZeroSize,
+            0,
+            args.vertexStreamZeroStride,
+            g_pipelineState.vertexDeclaration);
+    }
+    else
+    {
+        allocation = g_uploadAllocators[g_frame].allocate<true>(
+            reinterpret_cast<const uint32_t*>(args.vertexStreamZeroData),
+            args.vertexStreamZeroSize,
+            alignof(uint32_t));
+    }
 
     auto& vertexBufferView = g_vertexBufferViews[0];
-    vertexBufferView.size = args.primitiveCount * args.vertexStreamZeroStride;
+    vertexBufferView.size = args.vertexStreamZeroSize;
     vertexBufferView.buffer = allocation.buffer->at(allocation.offset);
     g_inputSlots[0].stride = args.vertexStreamZeroStride;
     g_dirtyStates.vertexStreamFirst = 0;
@@ -6151,6 +6537,12 @@ static void ProcDrawPrimitiveUP(const RenderCommand& cmd)
         indexCount = g_quadIndexData.prepare(args.primitiveCount);
     else if (!g_capabilities.triangleFan && args.primitiveType == D3DPT_TRIANGLEFAN)
         indexCount = g_triangleFanIndexData.prepare(args.primitiveCount);
+
+    // Generated UP indices are transient.  Clearing the guest index pointer
+    // prevents RefreshMaliActiveBufferViews from overwriting them on the next
+    // draw boundary.
+    if (indexCount != 0)
+        g_indexBuffer = nullptr;
 
     if (args.csdFilterState != CsdFilterState::Unknown &&
         (g_pipelineState.pixelShader == g_csdShader || g_pipelineState.pixelShader == g_csdFilterShader.get()))
@@ -6164,7 +6556,18 @@ static void ProcDrawPrimitiveUP(const RenderCommand& cmd)
     if (indexCount != 0)
         g_commandLists[g_frame]->drawIndexedInstanced(indexCount, 1, 0, 0, 0);
     else
-        g_commandLists[g_frame]->drawInstanced(args.primitiveCount, 1, 0, 0);
+    {
+        if (vertexCount == 0 ||
+            vertexCount * args.vertexStreamZeroStride > vertexBufferView.size)
+        {
+            LOGF_WARNING("Skipping out-of-range DrawPrimitiveUP with {} vertices and {} bytes.",
+                vertexCount, vertexBufferView.size);
+            return;
+        }
+
+        g_commandLists[g_frame]->drawInstanced(
+            static_cast<uint32_t>(vertexCount), 1, 0, 0);
+    }
 }
 
 static const char* ConvertDeclUsage(uint32_t usage)
@@ -6626,6 +7029,33 @@ static void ProcSetStreamSource(const RenderCommand& cmd)
 {
     const auto& args = cmd.setStreamSource;
 
+    if (args.index >= std::size(g_vertexBuffers))
+    {
+        LOGF_WARNING("Ignoring invalid vertex stream index {}.", args.index);
+        return;
+    }
+
+    if (args.buffer != nullptr && args.offset > args.buffer->dataSize)
+    {
+        LOGF_WARNING("Ignoring vertex stream offset {} beyond buffer size {}.",
+            args.offset, args.buffer->dataSize);
+        g_vertexBuffers[args.index] = nullptr;
+        g_vertexBufferOffsets[args.index] = 0;
+        SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.vertexStrides[args.index], 0u);
+        bool dirty = false;
+        SetDirtyValue(dirty, g_vertexBufferViews[args.index].buffer, RenderBufferReference{});
+        SetDirtyValue(dirty, g_vertexBufferViews[args.index].size, 0u);
+        SetDirtyValue(dirty, g_inputSlots[args.index].stride, 0u);
+        if (dirty)
+        {
+            g_dirtyStates.vertexStreamFirst =
+                std::min<uint8_t>(g_dirtyStates.vertexStreamFirst, args.index);
+            g_dirtyStates.vertexStreamLast =
+                std::max<uint8_t>(g_dirtyStates.vertexStreamLast, args.index);
+        }
+        return;
+    }
+
     SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.vertexStrides[args.index], args.buffer != nullptr ? args.stride : 0u);
 
     bool dirty = false;
@@ -6633,7 +7063,7 @@ static void ProcSetStreamSource(const RenderCommand& cmd)
     g_vertexBuffers[args.index] = args.buffer;
     g_vertexBufferOffsets[args.index] = args.offset;
     const RenderBufferReference reference = g_isMali
-        ? GetMaliVertexReference(args.buffer, args.offset)
+        ? GetMaliVertexReference(args.buffer, args.index, args.offset)
         : (args.buffer != nullptr ? args.buffer->buffer->at(args.offset) : RenderBufferReference{});
     SetDirtyValue(dirty, g_vertexBufferViews[args.index].buffer, reference);
     SetDirtyValue(dirty, g_vertexBufferViews[args.index].size, args.buffer != nullptr ? (args.buffer->dataSize - args.offset) : 0u);
@@ -6657,6 +7087,18 @@ static void SetIndices(GuestDevice* device, GuestBuffer* buffer)
 static void ProcSetIndices(const RenderCommand& cmd)
 {
     const auto& args = cmd.setIndices;
+
+    if (args.buffer != nullptr)
+    {
+        const uint32_t elementSize =
+            args.buffer->guestFormat == D3DFMT_INDEX32 ? sizeof(uint32_t) : sizeof(uint16_t);
+        if (args.buffer->dataSize == 0 || args.buffer->dataSize % elementSize != 0)
+        {
+            LOGF_WARNING("Ignoring malformed index buffer: {} bytes is not a multiple of {}.",
+                args.buffer->dataSize, elementSize);
+            return;
+        }
+    }
 
     g_indexBuffer = args.buffer;
     const RenderBufferReference reference = g_isMali

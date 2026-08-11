@@ -10,7 +10,12 @@
 #include "ring_buffer.h"
 
 void RingBuffer::AdvanceRead(size_t _count) {
-  ring_size_t count = static_cast<ring_size_t>(_count);
+  ring_size_t count =
+      std::min<ring_size_t>(static_cast<ring_size_t>(_count), size_);
+  if (capacity_ == 0 || count == 0) {
+    return;
+  }
+
   if (read_offset_ + count < capacity_) {
     read_offset_ += count;
   } else {
@@ -18,10 +23,16 @@ void RingBuffer::AdvanceRead(size_t _count) {
     ring_size_t right_half = count - left_half;
     read_offset_ = right_half;
   }
+  size_ -= count;
 }
 
 void RingBuffer::AdvanceWrite(size_t _count) {
-  ring_size_t count = static_cast<ring_size_t>(_count);
+  ring_size_t available = capacity_ - size_;
+  ring_size_t count =
+      std::min<ring_size_t>(static_cast<ring_size_t>(_count), available);
+  if (capacity_ == 0 || count == 0) {
+    return;
+  }
 
   if (write_offset_ + count < capacity_) {
     write_offset_ += count;
@@ -30,11 +41,12 @@ void RingBuffer::AdvanceWrite(size_t _count) {
     ring_size_t right_half = count - left_half;
     write_offset_ = right_half;
   }
+  size_ += count;
 }
 
 RingBuffer::ReadRange RingBuffer::BeginRead(size_t _count) {
   ring_size_t count =
-      std::min<ring_size_t>(static_cast<ring_size_t>(_count), capacity_);
+      std::min<ring_size_t>(static_cast<ring_size_t>(_count), size_);
   if (!!(count)) [[likely]] {
     if (read_offset_ + count < capacity_) {
       return {buffer_ + read_offset_, nullptr, count, 0};
@@ -50,15 +62,15 @@ RingBuffer::ReadRange RingBuffer::BeginRead(size_t _count) {
 
 void RingBuffer::EndRead(ReadRange read_range) {
   if (read_range.second) {
-    read_offset_ = read_range.second_length;
+    AdvanceRead(read_range.first_length + read_range.second_length);
   } else {
-    read_offset_ += read_range.first_length;
+    AdvanceRead(read_range.first_length);
   }
 }
 
 size_t RingBuffer::Read(uint8_t *buffer, size_t _count) {
   ring_size_t count = static_cast<ring_size_t>(_count);
-  count = std::min(count, capacity_);
+  count = std::min(count, size_);
   if (!count) {
     return 0;
   }
@@ -83,12 +95,13 @@ size_t RingBuffer::Read(uint8_t *buffer, size_t _count) {
     read_offset_ = right_half;
   }
 
+  size_ -= count;
   return count;
 }
 
 size_t RingBuffer::Write(const uint8_t *buffer, size_t _count) {
   ring_size_t count = static_cast<ring_size_t>(_count);
-  count = std::min(count, capacity_);
+  count = std::min(count, capacity_ - size_);
   if (!count) {
     return 0;
   }
@@ -112,5 +125,6 @@ size_t RingBuffer::Write(const uint8_t *buffer, size_t _count) {
     write_offset_ = right_half;
   }
 
+  size_ += count;
   return count;
 }
