@@ -13,6 +13,7 @@
 #include <bc_diff.h>
 #include <cpu/guest_thread.h>
 #include <cstdint>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
 #include <decompressor.h>
@@ -396,7 +397,10 @@ static std::unique_ptr<RenderCommandFence> g_copyCommandFence;
 // Resource loading can happen on a worker thread; keeping them thread-local
 // prevents a worker from mistaking the render thread's open list for its own
 // and recording uploads into a command buffer concurrently.
-static thread_local bool g_graphicsCommandListOpen = false;
+static std::atomic<bool> g_graphicsCommandListOpen = false;
+static std::condition_variable g_graphicsCommandListClosed;
+static std::mutex g_graphicsCommandStateMutex;
+static std::thread::id g_renderThreadId;
 static thread_local RenderCommandList* g_activeCopyCommandList = nullptr;
 
 static Mutex g_discardMutex;
@@ -448,6 +452,18 @@ static void SetTextureDescriptor(
     RenderTextureView* view = nullptr)
 {
     assert(g_textureDescriptorSet != nullptr);
+
+    // Mali uses fixed descriptor arrays without UPDATE_AFTER_BIND. Updating a
+    // descriptor set while an earlier frame is still using it is invalid
+    // Vulkan, even when the update targets a previously unused array slot.
+    // Loader workers can publish textures while frames are in flight, so wait
+    // for those frames before touching the shared fixed descriptor set.
+    if (g_isMali && g_queue != nullptr &&
+        std::this_thread::get_id() != g_renderThreadId)
+    {
+        Video::WaitForGPU();
+    }
+
     std::lock_guard lock(g_textureDescriptorMutex);
     g_textureDescriptorSet->setTexture(index, texture, layout, view);
 }
@@ -1038,27 +1054,33 @@ static void DestructTempResources()
     g_tempBuffers[g_frame].clear();
 }
 
-static uint64_t CurrentMaliUploadSerial()
-{
-    // A serial is unique across frame-slot reuse.  A buffer may be used in
-    // frame slot 0, then slot 1, then slot 0 again; comparing only the slot
-    // would incorrectly keep a reference to an upload allocation that is
-    // about to be overwritten.
-    return g_frameUploadSerial[g_frame];
-}
-
 template<typename T>
 static RenderBufferReference UploadMaliGuestBuffer(GuestBuffer* buffer)
 {
     assert(buffer != nullptr);
-    assert(buffer->mappedMemory != nullptr);
+
+    const uint32_t elementSize = sizeof(T);
+    if (buffer->maliFrameSerial == g_frameUploadSerial[g_frame] &&
+        buffer->maliFrameSnapshotGeneration == buffer->maliGuestSnapshotGeneration &&
+        buffer->maliFrameElementSize == elementSize &&
+        buffer->maliFrameReference.ref != nullptr)
+    {
+        return buffer->maliFrameReference;
+    }
+
+    const void* source = buffer->maliGuestSnapshotValid
+        ? buffer->maliGuestSnapshot.get()
+        : buffer->mappedMemory;
+    assert(source != nullptr);
 
     auto allocation = g_uploadAllocators[g_frame].allocate<true>(
-        reinterpret_cast<const T*>(buffer->mappedMemory),
+        reinterpret_cast<const T*>(source),
         buffer->dataSize,
         alignof(T));
     buffer->maliFrameReference = allocation.buffer->at(allocation.offset);
-    buffer->maliFrameSerial = CurrentMaliUploadSerial();
+    buffer->maliFrameSerial = g_frameUploadSerial[g_frame];
+    buffer->maliFrameSnapshotGeneration = buffer->maliGuestSnapshotGeneration;
+    buffer->maliFrameElementSize = elementSize;
     return buffer->maliFrameReference;
 }
 
@@ -1067,19 +1089,17 @@ static RenderBufferReference GetMaliVertexReference(GuestBuffer* buffer, uint32_
     if (buffer == nullptr)
         return {};
 
-    if (buffer->maliFrameSerial != CurrentMaliUploadSerial() ||
-        buffer->maliFrameReference.ref == nullptr)
+    // Reuse the current frame's immutable upload. The cache is invalidated by
+    // the frame serial or by the unlock snapshot generation, so repeated draws
+    // do not exhaust the per-frame upload arena.
+    if (buffer->mappedMemory != nullptr)
     {
-        if (buffer->mappedMemory != nullptr)
+        const RenderBufferReference reference =
             UploadMaliGuestBuffer<uint32_t>(buffer);
-        else if (buffer->buffer != nullptr)
-            return buffer->buffer->at(offset);
-        else
-            return {};
+        return RenderBufferReference(reference.ref, reference.offset + offset);
     }
 
-    return RenderBufferReference(buffer->maliFrameReference.ref,
-        buffer->maliFrameReference.offset + offset);
+    return buffer->buffer != nullptr ? buffer->buffer->at(offset) : RenderBufferReference{};
 }
 
 static RenderBufferReference GetMaliIndexReference(GuestBuffer* buffer)
@@ -1087,30 +1107,17 @@ static RenderBufferReference GetMaliIndexReference(GuestBuffer* buffer)
     if (buffer == nullptr)
         return {};
 
-    if (buffer->maliFrameSerial != CurrentMaliUploadSerial() ||
-        buffer->maliFrameReference.ref == nullptr)
+    if (buffer->mappedMemory != nullptr)
     {
-        if (buffer->mappedMemory != nullptr)
-        {
-            if (buffer->guestFormat == D3DFMT_INDEX32)
-                UploadMaliGuestBuffer<uint32_t>(buffer);
-            else
-                UploadMaliGuestBuffer<uint16_t>(buffer);
-        }
-        else if (buffer->buffer != nullptr)
-        {
-            return buffer->buffer->at(0);
-        }
-        else
-        {
-            return {};
-        }
+        if (buffer->guestFormat == D3DFMT_INDEX32)
+            return UploadMaliGuestBuffer<uint32_t>(buffer);
+        return UploadMaliGuestBuffer<uint16_t>(buffer);
     }
 
-    return buffer->maliFrameReference;
+    return buffer->buffer != nullptr ? buffer->buffer->at(0) : RenderBufferReference{};
 }
 
-static void RefreshMaliActiveBufferViews(GuestBuffer* changedBuffer = nullptr)
+static void RefreshMaliActiveBufferViews()
 {
     if (!g_isMali)
         return;
@@ -1118,7 +1125,7 @@ static void RefreshMaliActiveBufferViews(GuestBuffer* changedBuffer = nullptr)
     for (uint32_t slot = 0; slot < std::size(g_vertexBuffers); ++slot)
     {
         GuestBuffer* buffer = g_vertexBuffers[slot];
-        if (buffer == nullptr || (changedBuffer != nullptr && buffer != changedBuffer))
+        if (buffer == nullptr)
             continue;
 
         const RenderBufferReference reference =
@@ -1133,8 +1140,7 @@ static void RefreshMaliActiveBufferViews(GuestBuffer* changedBuffer = nullptr)
         }
     }
 
-    if (g_indexBuffer != nullptr &&
-        (changedBuffer == nullptr || g_indexBuffer == changedBuffer))
+    if (g_indexBuffer != nullptr)
     {
         const RenderBufferReference reference = GetMaliIndexReference(g_indexBuffer);
         if (g_indexBufferView.buffer != reference)
@@ -1287,6 +1293,7 @@ struct RenderCommand
         struct
         {
             GuestTexture* texture;
+            std::atomic<bool>* completion;
         } unlockTextureRect;
 
         struct
@@ -1937,6 +1944,22 @@ static void ExecuteCopyCommandList(const T& function)
 {
     std::lock_guard lock(g_copyMutex);
 
+    // A Mali upload uses the same Vulkan queue as the frame renderer. Do not
+    // submit a second command buffer while the render thread is still
+    // recording the current frame: the two command buffers could then encode
+    // conflicting oldLayout values and queue submission order would no longer
+    // match the layout state observed while recording.
+    if (g_isMali &&
+        g_graphicsCommandListOpen.load(std::memory_order_acquire) &&
+        std::this_thread::get_id() != g_renderThreadId)
+    {
+        std::unique_lock stateLock(g_graphicsCommandStateMutex);
+        g_graphicsCommandListClosed.wait(stateLock, []
+        {
+            return !g_graphicsCommandListOpen.load(std::memory_order_acquire);
+        });
+    }
+
     // Never append a loader upload to an open frame command buffer.  On Mali
     // the copy queue aliases the graphics queue, so this submission is ordered
     // on that queue and the fence makes the texture safe before its descriptor
@@ -2281,7 +2304,7 @@ static void BeginCommandList()
     auto& commandList = g_commandLists[g_frame];
 
     commandList->begin();
-    g_graphicsCommandListOpen = true;
+    g_graphicsCommandListOpen.store(true, std::memory_order_release);
     if (g_capabilities.queryPools)
     {
         commandList->resetQueryPool(g_queryPools[g_frame].get(), 0, NUM_QUERIES);
@@ -3169,10 +3192,19 @@ static void UnlockTextureRect(GuestTexture* texture)
 {
     assert(std::this_thread::get_id() == g_presentThreadId);
 
+    // The guest can immediately relock and reuse the CPU lock buffer after
+    // this call returns. Mali needs the render-thread copy to be complete
+    // before that memory is reused, otherwise scene transitions can upload
+    // mixed old/new texture rows and produce the observed tearing/morphing.
+    std::atomic<bool> completion{false};
     RenderCommand cmd;
     cmd.type = RenderCommandType::UnlockTextureRect;
     cmd.unlockTextureRect.texture = texture;
+    cmd.unlockTextureRect.completion = g_isMali ? &completion : nullptr;
     g_renderQueue.enqueue(cmd);
+
+    if (g_isMali)
+        completion.wait(false, std::memory_order_acquire);
 }
 
 static void ProcUnlockTextureRect(const RenderCommand& cmd)
@@ -3196,6 +3228,12 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
     g_commandLists[g_frame]->barriers(RenderBarrierStage::GRAPHICS,
         RenderTextureBarrier(args.texture->texture, RenderTextureLayout::SHADER_READ));
     args.texture->layout = RenderTextureLayout::SHADER_READ;
+
+    if (args.completion != nullptr)
+    {
+        args.completion->store(true, std::memory_order_release);
+        args.completion->notify_one();
+    }
 }
 
 static void* LockBuffer(GuestBuffer* buffer, uint32_t flags)
@@ -3232,15 +3270,19 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
 
     if (g_isMali)
     {
-        // Do not overwrite the buffer's long-lived allocation.  A previous
-        // frame can still be fetching it when the game locks the same D3D
-        // buffer again.  The per-frame upload allocation remains alive until
-        // that frame slot's fence retires.
-        UploadMaliGuestBuffer<T>(buffer);
-        // Unlock is not required to be followed by SetStreamSource/SetIndices.
-        // Publish the new immutable allocation to any binding that is already
-        // active in the guest render state.
-        RefreshMaliActiveBufferViews(buffer);
+        // The guest reuses its CPU lock buffer as soon as Unlock returns.
+        // Snapshot it on the render thread before acknowledging the unlock;
+        // the GPU upload itself remains deferred to the draw boundary.
+        if (!buffer->maliGuestSnapshot ||
+            buffer->maliGuestSnapshotValid == false)
+        {
+            buffer->maliGuestSnapshot =
+                std::make_unique_for_overwrite<uint8_t[]>(buffer->dataSize);
+        }
+        memcpy(buffer->maliGuestSnapshot.get(), buffer->mappedMemory, buffer->dataSize);
+        buffer->maliGuestSnapshotValid = true;
+        ++buffer->maliGuestSnapshotGeneration;
+        return;
     }
     else if (useCopyQueue && g_capabilities.gpuUploadHeap)
     {
@@ -4035,10 +4077,6 @@ void Video::Present()
     g_dirtyStates = DirtyStates(true);
     g_uploadAllocators[g_frame].reset();
     g_frameUploadSerial[g_frame] = ++g_nextMaliUploadSerial;
-    // A bound guest buffer may not be rebound when a new frame starts. Make
-    // its active view reference this frame slot's allocation rather than the
-    // allocation belonging to a previously submitted frame.
-    RefreshMaliActiveBufferViews();
     g_intermediaryUploadAllocator.reset();
     g_triangleFanIndexData.reset();
     g_quadIndexData.reset();
@@ -4162,7 +4200,8 @@ static void ProcExecuteCommandList(const RenderCommand& cmd)
     // vertex/index data, or staging data.
     g_uploadAllocators[g_frame].flush();
     commandList->end();
-    g_graphicsCommandListOpen = false;
+    g_graphicsCommandListOpen.store(false, std::memory_order_release);
+    g_graphicsCommandListClosed.notify_all();
 
     if (g_swapChainValid)
     {
@@ -4349,6 +4388,7 @@ static GuestTexture* CreateTexture(uint32_t width, uint32_t height, uint32_t dep
     viewDesc.format = desc.format;
     viewDesc.dimension = texture->type == ResourceType::VolumeTexture ? RenderTextureViewDimension::TEXTURE_3D : RenderTextureViewDimension::TEXTURE_2D;
     viewDesc.mipLevels = levels;
+    viewDesc.arraySize = desc.arraySize;
 
     switch (format)
     {
@@ -4463,7 +4503,7 @@ static GuestSurface* CreateSurface(uint32_t width, uint32_t height, uint32_t for
         desc.mipLevels = 1;
         desc.arraySize = 1;
         // desc.multisampling.sampleCount = multiSample != 0 && Config::AntiAliasing != EAntiAliasing::None ? int32_t(Config::AntiAliasing.Value) : RenderSampleCount::COUNT_1;
-        if (multiSample == 0) {
+        if (g_isMali || multiSample == 0) {
             desc.multisampling.sampleCount = RenderSampleCount::COUNT_1;
         } else {
             desc.multisampling.sampleCount = multiSample == 1 ? RenderSampleCount::COUNT_2 : RenderSampleCount::COUNT_4;
@@ -5467,7 +5507,12 @@ static std::unique_ptr<RenderPipeline> CreateGraphicsPipeline(const PipelineStat
     desc.renderTargetBlend[0].renderTargetWriteMask = pipelineState.colorWriteEnable;
     desc.renderTargetCount = pipelineState.renderTargetFormat != RenderFormat::UNKNOWN ? 1 : 0;
     desc.depthTargetFormat = pipelineState.depthStencilFormat;
-    desc.multisampling.sampleCount = pipelineState.sampleCount;
+    // The Mali profile has no multisampled render targets. Keep the pipeline
+    // state consistent with CreateSurface even if a stale guest render state
+    // still contains the original Xbox MSAA value.
+    desc.multisampling.sampleCount = g_isMali
+        ? RenderSampleCount::COUNT_1
+        : pipelineState.sampleCount;
     desc.alphaToCoverageEnabled = pipelineState.enableAlphaToCoverage;
     desc.inputElements = pipelineState.vertexDeclaration->inputElements.get();
     desc.inputElementsCount = pipelineState.vertexDeclaration->inputElementCount;
@@ -6026,6 +6071,12 @@ static void ProcDrawPrimitive(const RenderCommand& cmd)
 {
     const auto& args = cmd.drawPrimitive;
 
+    // Guest unlocks and stream rebinds are separate commands. Refresh at the
+    // actual draw boundary so repeated unlocks and changed offsets can never
+    // reuse a reference published by an earlier command.
+    if (g_isMali)
+        RefreshMaliActiveBufferViews();
+
     SetPrimitiveType(args.primitiveType);
 
     FlushRenderStateForRenderThread();
@@ -6052,6 +6103,9 @@ static void DrawIndexedPrimitive(GuestDevice* device, uint32_t primitiveType, in
 static void ProcDrawIndexedPrimitive(const RenderCommand& cmd)
 {
     const auto& args = cmd.drawIndexedPrimitive;
+
+    if (g_isMali)
+        RefreshMaliActiveBufferViews();
 
     SetPrimitiveType(args.primitiveType);
     FlushRenderStateForRenderThread();
@@ -6734,6 +6788,7 @@ static void SetClipPlane(GuestDevice* device, uint32_t index, const be<float>* p
 
 static std::thread g_renderThread([]
     {
+        g_renderThreadId = std::this_thread::get_id();
 #ifdef _WIN32
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
         GuestThread::SetThreadName(GetCurrentThreadId(), "Render Thread");
@@ -7323,6 +7378,7 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
         viewDesc.format = desc.format;
         viewDesc.dimension = ConvertTextureViewDimension(ddsDesc.type);
         viewDesc.mipLevels = ddsDesc.numMips;
+        viewDesc.arraySize = desc.arraySize;
 
         if (ddsDesc.format == ddspp::A8_UNORM)
         {

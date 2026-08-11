@@ -47,6 +47,7 @@ namespace plume {
     // validation error.
     static std::mutex g_liveVulkanTexturesMutex;
     static std::unordered_set<const VulkanTexture *> g_liveVulkanTextures;
+    static std::atomic<uint64_t> g_nextVulkanTextureGeneration{1};
 
     static bool isLiveVulkanTexture(const VulkanTexture *texture) {
         if (texture == nullptr) {
@@ -1122,12 +1123,14 @@ namespace plume {
         // wrappers for the entire lifetime of the vector element, so register
         // the element itself rather than a temporary used to initialize it.
         registerVulkanTexture(this);
+        generation = g_nextVulkanTextureGeneration.fetch_add(1, std::memory_order_relaxed);
     }
 
     VulkanTexture::VulkanTexture(VulkanDevice *device, VulkanPool *pool, const RenderTextureDesc &desc) {
         assert(device != nullptr);
 
         registerVulkanTexture(this);
+        generation = g_nextVulkanTextureGeneration.fetch_add(1, std::memory_order_relaxed);
 
         this->device = device;
         this->pool = pool;
@@ -1143,6 +1146,10 @@ namespace plume {
         imageInfo.extent.depth = desc.depth;
         imageInfo.mipLevels = desc.mipLevels;
         imageInfo.arrayLayers = desc.arraySize;
+        // The Android Mali compatibility profile disables MSAA at the guest
+        // renderer level. Keep this backend defensive as well: a missed
+        // caller-side clamp must not create an image whose sample count then
+        // disagrees with its framebuffer, view, or resolve pipeline.
         imageInfo.samples = VkSampleCountFlagBits(desc.multisampling.sampleCount);
         imageInfo.tiling = toVk(desc.textureArrangement);
         imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -1185,6 +1192,7 @@ namespace plume {
         assert(image != VK_NULL_HANDLE);
 
         registerVulkanTexture(this);
+        generation = g_nextVulkanTextureGeneration.fetch_add(1, std::memory_order_relaxed);
 
         this->device = device;
         vk = image;
@@ -1192,8 +1200,7 @@ namespace plume {
 
     VulkanTexture::VulkanTexture(VulkanTexture &&other) noexcept {
         registerVulkanTexture(this);
-
-        generation = other.generation;
+        generation = g_nextVulkanTextureGeneration.fetch_add(1, std::memory_order_relaxed);
         vk = other.vk;
         imageView = other.imageView;
         imageFormat = other.imageFormat;
@@ -1222,11 +1229,6 @@ namespace plume {
             return *this;
         }
 
-        // The destination wrapper may already have pending barriers referring
-        // to its previous image.  Keep the generation unique across the
-        // replacement so those deferred barriers are rejected below.
-        const uint64_t nextGeneration = std::max(generation + 1, other.generation);
-
         // The destination is a real vector element and is already registered.
         // Release only resources owned by that element before taking the
         // source's handles.  Swapchain images themselves are not owned.
@@ -1237,7 +1239,10 @@ namespace plume {
             vmaDestroyImage(device->allocator, vk, allocation);
         }
 
-        generation = nextGeneration;
+        // This wrapper keeps its address but receives a new native image.
+        // Advance its lifetime generation so barriers queued for the old
+        // image cannot apply to the replacement.
+        generation = g_nextVulkanTextureGeneration.fetch_add(1, std::memory_order_relaxed);
         vk = other.vk;
         imageView = other.imageView;
         imageFormat = other.imageFormat;

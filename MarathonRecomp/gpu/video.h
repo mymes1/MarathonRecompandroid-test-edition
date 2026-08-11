@@ -216,12 +216,16 @@ struct GuestBuffer : GuestResource
     RenderFormat format = RenderFormat::UNKNOWN;
     uint32_t guestFormat = 0;
     bool lockedReadOnly = false;
-    // Mali cannot safely overwrite a buffer that an earlier frame may still
-    // be fetching.  The render backend stores the immutable upload selected
-    // for the current frame here; it is refreshed when the frame slot is
-    // reused or when this buffer is unlocked.
+    // The guest lock buffer is reused after Unlock returns. Mali uploads are
+    // published at draw time, so retain the latest unlocked bytes separately
+    // until the render thread has copied them into the frame upload buffer.
+    std::unique_ptr<uint8_t[]> maliGuestSnapshot;
+    bool maliGuestSnapshotValid = false;
+    uint64_t maliGuestSnapshotGeneration = 0;
     RenderBufferReference maliFrameReference{};
     uint64_t maliFrameSerial = 0;
+    uint64_t maliFrameSnapshotGeneration = 0;
+    uint32_t maliFrameElementSize = 0;
 };
 
 struct GuestSurfaceDesc
