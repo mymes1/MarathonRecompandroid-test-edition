@@ -10,3 +10,4 @@
 - [Mali texture lifetime and uploads](mali-texture-lifetime.md) — movable wrappers must transfer registry ownership, and worker uploads need explicit graphics-queue ordering on SM-X110.
 - [Mali upload reuse and generations](mali-upload-reuse.md) — cache immutable guest uploads per frame and use globally unique texture-wrapper generations across moves/replacements.
 - [Generated shader dependencies](generated-shader-dependencies.md) — CMake shader custom commands must track included HLSL headers or stale SPIR-V can ship after renderer fixes.
+- [Android present threading](android-present-threading.md) — loading and gameplay can present concurrently during startup, so the whole present transaction must be serialized.

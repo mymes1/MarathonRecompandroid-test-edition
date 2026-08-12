@@ -1517,6 +1517,14 @@ static void RefreshMaliActiveBufferViews()
 }
 
 static std::thread::id g_presentThreadId = std::this_thread::get_id();
+// The guest's loading thread can present during startup while the main game
+// thread is also entering its frame loop. Present advances shared frame
+// state, swapchain image state, command-list state, and the completion flag,
+// so allowing those two callers to overlap can lose the completion wakeup and
+// park the main thread on the Android futex seen in the startup watchdog dump.
+// Keep the whole present transaction single-threaded; the render thread still
+// consumes the queued commands independently.
+static std::mutex g_presentMutex;
 static std::atomic<bool> g_readyForCommands;
 
 // PPC_FUNC_IMPL(__imp__sub_824ECA00);
@@ -4400,6 +4408,11 @@ static std::atomic<bool> g_executedCommandList;
 
 void Video::Present() 
 {
+    // Loading and gameplay can both reach this hook during startup. All state
+    // below belongs to one logical frame, so do not let two present callers
+    // interleave it.
+    std::lock_guard presentLock(g_presentMutex);
+
     // Feeds the Android hang-watchdog (no-op elsewhere): if these stop, the log.txt
     // timestamp of the last ping marks when the app froze.
     os::logger::Heartbeat();

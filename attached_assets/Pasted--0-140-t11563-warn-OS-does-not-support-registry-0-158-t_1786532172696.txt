@@ -1,0 +1,392 @@
+[    0.140][t11563][warn][*] OS does not support registry.
+[    0.158][t11563][logger] Marathon Recomp log started
+[    0.158][t11563][build] === APK VERSION: 1.0.0 ===
+[    0.158][t11563][build] ANDROID_BUILD_ID=1.0.0-release
+[    0.158][t11563][device] device=SM-X110 brand=samsung soc=MT8781V/NA android=15 sdk=35 vulkan_hal=mali egl_hal=meow abi=arm64-v8a ram_mb=3740
+[    0.291][t11563][*] Saving configuration...
+[    0.293][t11563][warn][*] Host Startup
+[    1.196][t11563][XAudioInitializeSystem] SDL audio driver: "openslES".
+[    1.353][t11563][*] Audio device opened: freq 48000, channels 2, samples 1024 (requested 1024)
+[    1.465][t11563][*] SDL video driver: "Android"
+[    1.604][t11563][AndroidGetCustomVulkanLoader] Android Vulkan driver mode: Auto.
+[    1.604][t11563][warn][AndroidGetCustomVulkanLoader] Detected non-Adreno GPU ("mali/meow"): the bundled Turnip driver is Adreno-only, using the system Vulkan driver.
+[    1.657][t11563][CreateHostDevice] Mali compatibility path: using CPU RGBA texture fallback.
+[    1.657][t11563][warn][CreateHostDevice] BC texture formats are unsupported by this device. Textures will be decompressed on the CPU at load time, increasing memory usage.
+[    1.657][t11563][warn][CreateHostDevice] Mali compatibility path: limiting bindless descriptors to 1024 textures and 1024 samplers to prevent libGLES_mali shader compiler crashes.
+[    1.657][t11563][CreateHostDevice] Mali compatibility path: conservative Vulkan capabilities enabled.
+[    1.657][t11563][CreateHostDevice] Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.
+[    1.657][t11563][warn][CreateHostDevice] Descriptor set sizes clamped to device limits: 1024 textures, 1024 samplers.
+[    1.657][t11563][*] Saving configuration...
+[    1.658][t11563][CreateHostDevice] CreateHostDevice: loading embedded shader cache.
+[    1.701][t11563][CreateHostDevice] CreateHostDevice: embedded shader cache loaded.
+[    1.701][t11563][*] Saving configuration...
+[    1.937][t11563][android] swapchain (re)created successfully
+[    1.937][t11563][warn][*] Start Guest Thread
+[    1.937][t11563][warn][*] /storage/emulated/0/Android/data/com.sega.marathon/files/MarathonRecomp/game/default.xex
+[    1.964][t11563][*] Changed resolution: 1340x800
+[    1.966][t11563][NetDll_WSAStartup] !!! STUB !!!
+[    1.966][t11563][warn][CreateDevice] 0x0 0x1 0x0 0x1 0xa0a60 0x1000a0a5c
+
+[    2.133][t11563][*] Loading file: archives/system.arc
+[    2.147][t11563][Game] Loading file: "game:\xenon\archives\system.arc"
+[    2.149][t11563][*] Loading file: archives/sprite.arc
+[    2.149][t11563][Game] Loading file: "game:\win32\archives\sprite.arc"
+[    2.151][t11563][*] Loading file: archives/cache.arc
+[    2.151][t11563][Game] Loading file: "game:\xenon\archives\cache.arc"
+[    2.156][t11563][*] Loading file: archives/particle_data.arc
+[    2.156][t11563][Game] Loading file: "game:\win32\archives\particle_data.arc"
+[    2.201][t11563][*] Loading file: archives/shader.arc
+[    2.202][t11563][Game] Loading file: "game:\xenon\archives\shader.arc"
+[    2.216][t11563][*] Loading file: 
+[    2.232][t11563][ExRegisterTitleTerminateNotification] !!! STUB !!!
+[    2.233][t11563][ExCreateThread] 0x1000A0674, 0x0, 0x0, 0x0, 0x8255B848, 0x0, 0x10000001 2971FA84
+[    2.233][t11563][ObDereferenceObject] !!! STUB !!!
+[    2.234][t11563][ExCreateThread] 0x1000A0660, 0x0, 0x101AE23F8, 0x826FE080, 0x825866A8, 0x1AE23E0, 0x1 317A593D
+[    2.234][t11563][ExCreateThread] 0x1000A0660, 0x0, 0x101AE24F8, 0x826FE080, 0x825866A8, 0x1AE24E0, 0x1 4EB9A148
+[    2.236][t11563][*] Loading file: shader/primitive/primitive.fx
+[    2.238][t11563][*] Loading file: shader/primitive/primitive.fx
+[    2.239][t11563][*] Loading file: shader/std/no_shader.fxo
+[    2.239][t11563][*] Loading file: shader/skin/no_shader.fxo
+[    2.240][t11563][*] Loading file: shader/morph/no_shader.fxo
+[    2.240][t11563][*] Loading file: shader/np/no_shader.fxo
+[    2.240][t11563][*] Loading file: shader/skin_np/no_shader.fxo
+[    2.241][t11563][*] Loading file: shader/morph_np/no_shader.fxo
+[    2.241][t11563][*] Loading file: shader/lm/no_shader.fxo
+[    2.241][t11563][*] Loading file: shader/lm_np/no_shader.fxo
+[    2.242][t11563][*] Loading file: shader/primitive/rt_restoration.fx
+[    2.242][t11563][*] Loading file: shader/primitive/csd.fx
+[    2.244][t11563][*] Loading file: 
+[    2.247][t11563][*] Loading file: shader/Common.fx
+[    2.248][t11563][*] Loading file: shader/filter/BloomFilter.fx
+[    2.248][t11563][*] Loading file: shader/filter/BurnoutBlurFilter.fx
+[    2.248][t11563][*] Loading file: shader/filter/ColorCopyFilter.fx
+[    2.249][t11563][*] Loading file: shader/filter/ColorCorrectionFilter.fx
+[    2.249][t11563][*] Loading file: shader/filter/ColorOutFilter.fx
+[    2.249][t11563][*] Loading file: shader/filter/CopyFilter.fx
+[    2.250][t11563][*] Loading file: shader/filter/DepthOfFieldFilter.fx
+[    2.250][t11563][*] Loading file: shader/filter/MaskCopyFilter.fx
+[    2.253][t11563][*] Loading file: shader/filter/MotionBlurFilter.fx
+[    2.253][t11563][*] Loading file: shader/filter/PhaseShiftFilter.fx
+[    2.254][t11563][*] Loading file: shader/filter/SampleFilter.fx
+[    2.259][t11563][*] Loading file: shader/primitive/AcrobataPrimitive.fx
+[    2.269][t11563][*] Loading file: particle/pe/sonicnext
+[    2.270][t11563][*] Loading file: shader/std/pe.fxo
+[    2.271][t11563][*] Loading file: shader/std/pe.fxo
+[    2.271][t11563][*] Loading file: shader/std/pe.fxo
+[    2.271][t11563][*] Loading file: shader/std/pe.fxo
+[    2.271][t11563][*] Loading file: shader/std/pe.fxo
+[    2.271][t11563][*] Loading file: shader/std/pe.fxo
+[    2.271][t11563][*] Loading file: shader/std/pe.fxo
+[    2.271][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.272][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][*] Loading file: shader/std/pe.fxo
+[    2.273][t11563][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8DB8, 0x826FE080, 0x825866A8, 0x1FC8DA0, 0x1 6E94ED31
+[    2.273][t11563][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8E38, 0x826FE080, 0x825866A8, 0x1FC8E20, 0x1 B179B606
+[    2.273][t11563][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8EB8, 0x826FE080, 0x825866A8, 0x1FC8EA0, 0x1 40EAF4B8
+[    2.273][t11563][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8F38, 0x826FE080, 0x825866A8, 0x1FC8F20, 0x1 864D0EE2
+[    2.273][t11563][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8FB8, 0x826FE080, 0x825866A8, 0x1FC8FA0, 0x1 AF89B911
+[    2.273][t11563][ExCreateThread] 0x1000A0760, 0x0, 0x101FC9038, 0x826FE080, 0x825866A8, 0x1FC9020, 0x1 13ECEF3F
+[    2.274][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9238, 0x826FE080, 0x825866A8, 0x1FC9220, 0x1 12D37B6
+[    2.274][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC92B8, 0x826FE080, 0x825866A8, 0x1FC92A0, 0x1 3D98B8A8
+[    2.274][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9338, 0x826FE080, 0x825866A8, 0x1FC9320, 0x1 F0967065
+[    2.274][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC93B8, 0x826FE080, 0x825866A8, 0x1FC93A0, 0x1 11C3D989
+[    2.274][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9438, 0x826FE080, 0x825866A8, 0x1FC9420, 0x1 7AA779B3
+[    2.274][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC95B8, 0x826FE080, 0x825866A8, 0x1FC95A0, 0x1 B698BBBB
+[    2.275][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9638, 0x826FE080, 0x825866A8, 0x1FC9620, 0x1 FD21B585
+[    2.275][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC96B8, 0x826FE080, 0x825866A8, 0x1FC96A0, 0x1 24B94104
+[    2.275][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9738, 0x826FE080, 0x825866A8, 0x1FC9720, 0x1 895C6BA8
+[    2.275][t11563][ExCreateThread] 0x1000A0750, 0x0, 0x101FC97B8, 0x826FE080, 0x825866A8, 0x1FC97A0, 0x1 12EFE1F3
+[    2.275][t11563][*] Loading file: scripts/render/render_default.lua
+[    2.278][t11563][*] Loading file: sprite/loading/loading_english
+[    2.282][t11563][*] CSD freed: 0x101FB8C60
+[    2.282][t11563][*] CSD loaded: sprite/loading/loading_english (0x101FD6E60)
+[    2.282][t11563][*] CSD modifier(s) redirected: sprite/loading/loading
+[    2.283][t11563][ExCreateThread] 0x1000A0920, 0x0, 0x101FBBBF8, 0x826FE080, 0x825866A8, 0x1FBBBE0, 0x1 88620261
+[    2.283][t11563][*] Loading file: 
+[    2.284][t11563][*] Loading file: archives/cache.arc
+[    2.284][t11563][*] Loading file: archives/enemy.arc
+[    2.284][t11563][Game] Loading file: "game:\xenon\archives\enemy.arc"
+[    2.285][t11563][*] Loading file: archives/event.arc
+[    2.285][t11563][Game] Loading file: "game:\xenon\archives\event.arc"
+[    2.289][t11563][*] Loading file: archives/game.arc
+[    2.289][t11563][Game] Loading file: "game:\xenon\archives\game.arc"
+[    2.290][t11563][*] Loading file: archives/human.arc
+[    2.290][t11563][Game] Loading file: "game:\xenon\archives\human.arc"
+[    2.292][t11563][*] Loading file: archives/object.arc
+[    2.292][t11563][Game] Loading file: "game:\xenon\archives\object.arc"
+[    2.294][t11563][*] Loading file: archives/particle.arc
+[    2.294][t11563][Game] Loading file: "game:\xenon\archives\particle.arc"
+[    2.295][t11563][*] Loading file: archives/scripts.arc
+[    2.295][t11563][Game] Loading file: "game:\xenon\archives\scripts.arc"
+[    2.296][t11563][*] Loading file: archives/sound.arc
+[    2.296][t11563][Game] Loading file: "game:\xenon\archives\sound.arc"
+[    2.299][t11563][*] Loading file: archives/stage.arc
+[    2.299][t11563][Game] Loading file: "game:\xenon\archives\stage.arc"
+[    2.299][t11563][*] Loading file: archives/text.arc
+[    2.300][t11563][Game] Loading file: "game:\xenon\archives\text.arc"
+[    2.300][t11563][*] Loading file: archives/player.arc
+[    2.300][t11563][Game] Loading file: "game:\xenon\archives\player.arc"
+[    2.301][t11563][*] Loading file: archives/enemy_data.arc
+[    2.301][t11563][Game] Loading file: "game:\win32\archives\enemy_data.arc"
+[    2.303][t11563][*] Loading file: archives/event_data.arc
+[    2.303][t11563][Game] Loading file: "game:\win32\archives\event_data.arc"
+[    2.305][t11563][*] Loading file: archives/particle_data.arc
+[    2.305][t11563][*] Loading file: archives/player_amy.arc
+[    2.305][t11563][Game] Loading file: "game:\win32\archives\player_amy.arc"
+[    2.306][t11563][*] Loading file: archives/player_blaze.arc
+[    2.306][t11563][Game] Loading file: "game:\win32\archives\player_blaze.arc"
+[    2.306][t11563][*] Loading file: archives/player_common.arc
+[    2.306][t11563][Game] Loading file: "game:\win32\archives\player_common.arc"
+[    2.307][t11563][*] Loading file: archives/player_knuckles.arc
+[    2.307][t11563][Game] Loading file: "game:\win32\archives\player_knuckles.arc"
+[    2.308][t11563][*] Loading file: archives/player_omega.arc
+[    2.308][t11563][Game] Loading file: "game:\win32\archives\player_omega.arc"
+[    2.308][t11563][*] Loading file: archives/player_princess.arc
+[    2.308][t11563][Game] Loading file: "game:\win32\archives\player_princess.arc"
+[    2.309][t11563][*] Loading file: archives/player_rouge.arc
+[    2.309][t11563][Game] Loading file: "game:\win32\archives\player_rouge.arc"
+[    2.310][t11563][*] Loading file: archives/player_shadow.arc
+[    2.310][t11563][Game] Loading file: "game:\win32\archives\player_shadow.arc"
+[    2.311][t11563][*] Loading file: archives/player_silver.arc
+[    2.311][t11563][Game] Loading file: "game:\win32\archives\player_silver.arc"
+[    2.312][t11563][*] Loading file: archives/player_sonic.arc
+[    2.312][t11563][Game] Loading file: "game:\win32\archives\player_sonic.arc"
+[    2.312][t11563][*] Loading file: archives/player_supershadow.arc
+[    2.312][t11563][Game] Loading file: "game:\win32\archives\player_supershadow.arc"
+[    2.313][t11563][*] Loading file: archives/player_supersilver.arc
+[    2.313][t11563][Game] Loading file: "game:\win32\archives\player_supersilver.arc"
+[    2.314][t11563][*] Loading file: archives/player_supersonic.arc
+[    2.314][t11563][Game] Loading file: "game:\win32\archives\player_supersonic.arc"
+[    2.315][t11563][*] Loading file: archives/player_tails.arc
+[    2.315][t11563][Game] Loading file: "game:\win32\archives\player_tails.arc"
+[    2.317][t11563][*] Loading file: archives/radarmap.arc
+[    2.317][t11563][Game] Loading file: "game:\win32\archives\radarmap.arc"
+[    2.318][t11563][*] Loading file: archives/sprite.arc
+[    2.318][t11563][*] Loading file: archives/stage_aqa_a.arc
+[    2.318][t11563][Game] Loading file: "game:\win32\archives\stage_aqa_a.arc"
+[    2.319][t11563][*] Loading file: archives/stage_aqa_b.arc
+[    2.319][t11563][Game] Loading file: "game:\win32\archives\stage_aqa_b.arc"
+[    2.320][t11563][*] Loading file: archives/stage_boss_dr1_dtd.arc
+[    2.320][t11563][Game] Loading file: "game:\win32\archives\stage_boss_dr1_dtd.arc"
+[    2.322][t11563][*] Loading file: archives/stage_boss_dr1_wap.arc
+[    2.322][t11563][Game] Loading file: "game:\win32\archives\stage_boss_dr1_wap.arc"
+[    2.323][t11563][*] Loading file: archives/stage_boss_dr2.arc
+[    2.323][t11563][Game] Loading file: "game:\win32\archives\stage_boss_dr2.arc"
+[    2.324][t11563][*] Loading file: archives/stage_boss_dr3.arc
+[    2.324][t11563][Game] Loading file: "game:\win32\archives\stage_boss_dr3.arc"
+[    2.325][t11563][*] Loading file: archives/stage_boss_iblis02.arc
+[    2.325][t11563][Game] Loading file: "game:\win32\archives\stage_boss_iblis02.arc"
+[    2.326][t11563][*] Loading file: archives/stage_boss_iblis03.arc
+[    2.326][t11563][Game] Loading file: "game:\win32\archives\stage_boss_iblis03.arc"
+[    2.329][t11563][*] Loading file: archives/stage_boss_mefi01.arc
+[    2.329][t11563][Game] Loading file: "game:\win32\archives\stage_boss_mefi01.arc"
+[    2.332][t11563][*] Loading file: archives/stage_boss_mefi02.arc
+[    2.333][t11563][Game] Loading file: "game:\win32\archives\stage_boss_mefi02.arc"
+[    2.333][t11563][*] Loading file: archives/stage_boss_rct.arc
+[    2.333][t11563][Game] Loading file: "game:\win32\archives\stage_boss_rct.arc"
+[    2.334][t11563][*] Loading file: archives/stage_boss_solaris.arc
+[    2.334][t11563][Game] Loading file: "game:\win32\archives\stage_boss_solaris.arc"
+[    2.336][t11563][*] Loading file: archives/stage_csc_a.arc
+[    2.336][t11563][Game] Loading file: "game:\win32\archives\stage_csc_a.arc"
+[    2.339][t11563][*] Loading file: archives/stage_csc_b.arc
+[    2.339][t11563][Game] Loading file: "game:\win32\archives\stage_csc_b.arc"
+[    2.341][t11563][*] Loading file: archives/stage_csc_c.arc
+[    2.341][t11563][Game] Loading file: "game:\win32\archives\stage_csc_c.arc"
+[    2.342][t11563][*] Loading file: archives/stage_csc_e.arc
+[    2.342][t11563][Game] Loading file: "game:\win32\archives\stage_csc_e.arc"
+[    2.343][t11563][*] Loading file: archives/stage_csc_f.arc
+[    2.344][t11563][Game] Loading file: "game:\win32\archives\stage_csc_f.arc"
+[    2.346][t11563][*] Loading file: archives/stage_csc_iblis01.arc
+[    2.346][t11563][Game] Loading file: "game:\win32\archives\stage_csc_iblis01.arc"
+[    2.347][t11563][*] Loading file: archives/stage_dtd_a.arc
+[    2.347][t11563][Game] Loading file: "game:\win32\archives\stage_dtd_a.arc"
+[    2.350][t11563][*] Loading file: archives/stage_dtd_b.arc
+[    2.350][t11563][Game] Loading file: "game:\win32\archives\stage_dtd_b.arc"
+[    2.351][t11563][*] Loading file: archives/stage_e0003.arc
+[    2.352][t11563][Game] Loading file: "game:\win32\archives\stage_e0003.arc"
+[    2.354][t11563][*] Loading file: archives/stage_e0009.arc
+[    2.354][t11563][Game] Loading file: "game:\win32\archives\stage_e0009.arc"
+[    2.355][t11563][*] Loading file: archives/stage_e0010.arc
+[    2.355][t11563][Game] Loading file: "game:\win32\archives\stage_e0010.arc"
+[    2.359][t11563][*] Loading file: archives/stage_e0012.arc
+[    2.359][t11563][Game] Loading file: "game:\win32\archives\stage_e0012.arc"
+[    2.360][t11563][*] Loading file: archives/stage_e0021.arc
+[    2.361][t11563][Game] Loading file: "game:\win32\archives\stage_e0021.arc"
+[    2.362][t11563][*] Loading file: archives/stage_e0022.arc
+[    2.362][t11563][Game] Loading file: "game:\win32\archives\stage_e0022.arc"
+[    2.362][t11563][*] Loading file: archives/stage_e0023.arc
+[    2.363][t11563][Game] Loading file: "game:\win32\archives\stage_e0023.arc"
+[    2.365][t11563][*] Loading file: archives/stage_e0026.arc
+[    2.365][t11563][Game] Loading file: "game:\win32\archives\stage_e0026.arc"
+[    2.366][t11563][*] Loading file: archives/stage_e0028.arc
+[    2.366][t11563][Game] Loading file: "game:\win32\archives\stage_e0028.arc"
+[    2.368][t11563][*] Loading file: archives/stage_e0031.arc
+[    2.368][t11563][Game] Loading file: "game:\win32\archives\stage_e0031.arc"
+[    2.371][t11563][*] Loading file: archives/stage_e0104.arc
+[    2.371][t11563][Game] Loading file: "game:\win32\archives\stage_e0104.arc"
+[    2.373][t11563][*] Loading file: archives/stage_e0105.arc
+[    2.373][t11563][Game] Loading file: "game:\win32\archives\stage_e0105.arc"
+[    2.373][t11563][*] Loading file: archives/stage_e0106.arc
+[    2.374][t11563][Game] Loading file: "game:\win32\archives\stage_e0106.arc"
+[    2.375][t11563][*] Loading file: archives/stage_e0120.arc
+[    2.375][t11563][Game] Loading file: "game:\win32\archives\stage_e0120.arc"
+[    2.380][t11563][*] Loading file: archives/stage_e0125.arc
+[    2.380][t11563][Game] Loading file: "game:\win32\archives\stage_e0125.arc"
+[    2.381][t11563][*] Loading file: archives/stage_e0206.arc
+[    2.381][t11563][Game] Loading file: "game:\win32\archives\stage_e0206.arc"
+[    2.391][t11563][*] Loading file: archives/stage_e0214.arc
+[    2.391][t11563][Game] Loading file: "game:\win32\archives\stage_e0214.arc"
+[    2.392][t11563][*] Loading file: archives/stage_e0216.arc
+[    2.392][t11563][Game] Loading file: "game:\win32\archives\stage_e0216.arc"
+[    2.394][t11563][*] Loading file: archives/stage_e0221.arc
+[    2.394][t11563][Game] Loading file: "game:\win32\archives\stage_e0221.arc"
+[    2.397][t11563][*] Loading file: archives/stage_e0304.arc
+[    2.397][t11563][Game] Loading file: "game:\win32\archives\stage_e0304.arc"
+[    2.398][t11563][*] Loading file: archives/stage_flc_a.arc
+[    2.398][t11563][Game] Loading file: "game:\win32\archives\stage_flc_a.arc"
+[    2.399][t11563][*] Loading file: archives/stage_flc_b.arc
+[    2.399][t11563][Game] Loading file: "game:\win32\archives\stage_flc_b.arc"
+[    2.401][t11563][*] Loading file: archives/stage_kdv_a.arc
+[    2.401][t11563][Game] Loading file: "game:\win32\archives\stage_kdv_a.arc"
+[    2.404][t11563][*] Loading file: archives/stage_kdv_b.arc
+[    2.404][t11563][Game] Loading file: "game:\win32\archives\stage_kdv_b.arc"
+[    2.407][t11563][*] Loading file: archives/stage_kdv_c.arc
+[    2.407][t11563][Game] Loading file: "game:\win32\archives\stage_kdv_c.arc"
+[    2.408][t11563][*] Loading file: archives/stage_kdv_d.arc
+[    2.409][t11563][Game] Loading file: "game:\win32\archives\stage_kdv_d.arc"
+[    2.410][t11563][*] Loading file: archives/stage_rct_a.arc
+[    2.410][t11563][Game] Loading file: "game:\win32\archives\stage_rct_a.arc"
+[    2.412][t11563][*] Loading file: archives/stage_rct_b.arc
+[    2.412][t11563][Game] Loading file: "game:\win32\archives\stage_rct_b.arc"
+[    2.413][t11563][*] Loading file: archives/stage_tpj_a.arc
+[    2.413][t11563][Game] Loading file: "game:\win32\archives\stage_tpj_a.arc"
+[    2.416][t11563][*] Loading file: archives/stage_tpj_b.arc
+[    2.416][t11563][Game] Loading file: "game:\win32\archives\stage_tpj_b.arc"
+[    2.419][t11563][*] Loading file: archives/stage_tpj_c.arc
+[    2.420][t11563][Game] Loading file: "game:\win32\archives\stage_tpj_c.arc"
+[    2.430][t11563][*] Loading file: archives/stage_twn_a.arc
+[    2.430][t11563][Game] Loading file: "game:\win32\archives\stage_twn_a.arc"
+[    2.435][t11563][*] Loading file: archives/stage_twn_b.arc
+[    2.435][t11563][Game] Loading file: "game:\win32\archives\stage_twn_b.arc"
+[    2.436][t11563][*] Loading file: archives/stage_twn_c.arc
+[    2.436][t11563][Game] Loading file: "game:\win32\archives\stage_twn_c.arc"
+[    2.436][t11563][*] Loading file: archives/stage_twn_d.arc
+[    2.437][t11563][Game] Loading file: "game:\win32\archives\stage_twn_d.arc"
+[    2.437][t11563][*] Loading file: archives/stage_wap_a.arc
+[    2.438][t11563][Game] Loading file: "game:\win32\archives\stage_wap_a.arc"
+[    2.439][t11563][*] Loading file: archives/stage_wap_b.arc
+[    2.439][t11563][Game] Loading file: "game:\win32\archives\stage_wap_b.arc"
+[    2.440][t11563][*] Loading file: archives/stage_wvo_a.arc
+[    2.440][t11563][Game] Loading file: "game:\win32\archives\stage_wvo_a.arc"
+[    2.442][t11563][*] Loading file: archives/stage_wvo_b.arc
+[    2.442][t11563][Game] Loading file: "game:\win32\archives\stage_wvo_b.arc"
+[    2.499][t11563][*] Loading file: 
+[    5.289][t11720][heartbeat] alive: frame #2
+[    8.289][t11720][watchdog] HANG DETECTED: no frame presented for 6.0s (last frame #2 at +2.315s). Thread dump follows:
+[    8.290][t11720][watchdog] tid 11496 [SDLActivity] state=S wchan=do_epoll_wait
+[    8.291][t11720][watchdog] tid 11497 [Signal Catcher] state=S wchan=do_sigtimedwait
+[    8.291][t11720][watchdog] tid 11498 [perfetto_hprof_] state=S wchan=pipe_read
+[    8.291][t11720][watchdog] tid 11499 [ADB-JDWP Connec] state=S wchan=do_sys_poll
+[    8.291][t11720][watchdog] tid 11500 [Jit thread pool] state=S wchan=futex_wait_queue_me
+[    8.291][t11720][watchdog] tid 11501 [HeapTaskDaemon] state=S wchan=futex_wait_queue_me
+[    8.291][t11720][watchdog] tid 11502 [ReferenceQueueD] state=S wchan=futex_wait_queue_me
+[    8.291][t11720][watchdog] tid 11503 [FinalizerDaemon] state=S wchan=futex_wait_queue_me
+[    8.291][t11720][watchdog] tid 11504 [FinalizerWatchd] state=S wchan=futex_wait_queue_me
+[    8.291][t11720][watchdog] tid 11505 [binder:11496_1] state=S wchan=binder_wait_for_work
+[    8.292][t11720][watchdog] tid 11506 [binder:11496_2] state=S wchan=binder_wait_for_work
+[    8.292][t11720][watchdog] tid 11509 [binder:11496_3] state=S wchan=binder_wait_for_work
+[    8.292][t11720][watchdog] tid 11511 [Profile Saver] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11514 [RenderThread] state=S wchan=do_epoll_wait
+[    8.292][t11720][watchdog] tid 11519 [SharedPreferenc] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11520 [mali-mem-purge] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11521 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11522 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11523 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11524 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11525 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11526 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11527 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11528 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.292][t11720][watchdog] tid 11529 [mali-cmar-backe] state=S wchan=do_sys_poll
+[    8.293][t11720][watchdog] tid 11532 [queued-work-loo] state=S wchan=do_epoll_wait
+[    8.293][t11720][watchdog] tid 11535 [SurfaceSyncGrou] state=S wchan=do_epoll_wait
+[    8.293][t11720][watchdog] tid 11536 [hwuiTask0] state=S wchan=futex_wait_queue_me
+[    8.293][t11720][watchdog] tid 11537 [hwuiTask1] state=S wchan=futex_wait_queue_me
+[    8.293][t11720][watchdog] tid 11538 [HWC release] state=S wchan=futex_wait_queue_me
+[    8.293][t11720][watchdog] tid 11540 [RenderThread] state=S wchan=futex_wait_queue_me
+[    8.293][t11720][watchdog] tid 11541 [GPU completion] state=S wchan=futex_wait_queue_me
+[    8.293][t11720][watchdog] tid 11543 [binder:11496_2] state=S wchan=futex_wait_queue_me
+[    8.293][t11720][watchdog] tid 11544 [binder:11496_4] state=S wchan=binder_wait_for_work
+[    8.293][t11720][watchdog] tid 11555 [SDLActivity] state=S wchan=futex_wait_queue_me
+[    8.293][t11720][watchdog] tid 11562 [AudioPortEventH] state=S wchan=do_epoll_wait
+[    8.293][t11720][watchdog] tid 11563 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.293][t11720][watchdog] tid 11564 [SDLThread] state=S wchan=pipe_read
+[    8.293][t11720][watchdog] tid 11647 [SDLThread] state=S wchan=__arm64_sys_nanosleep
+[    8.293][t11720][watchdog] tid 11649 [AudioTrack] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11662 [SDLAudioP2] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11665 [InsetsAnimation] state=S wchan=do_epoll_wait
+[    8.294][t11720][watchdog] tid 11666 [InteractionJank] state=S wchan=do_epoll_wait
+[    8.294][t11720][watchdog] tid 11676 [mali-mem-purge] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11677 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11679 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11680 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11681 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11682 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11683 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11684 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11685 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[    8.294][t11720][watchdog] tid 11686 [mali-cmar-backe] state=S wchan=do_sys_poll
+[    8.295][t11720][watchdog] tid 11699 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.295][t11720][watchdog] tid 11700 [SDLThread] state=S wchan=__arm64_sys_nanosleep
+[    8.295][t11720][watchdog] tid 11701 [SDLThread] state=S wchan=__arm64_sys_nanosleep
+[    8.295][t11720][watchdog] tid 11702 [SDLThread] state=S wchan=__arm64_sys_nanosleep
+[    8.295][t11720][watchdog] tid 11703 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.295][t11720][watchdog] tid 11704 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.295][t11720][watchdog] tid 11705 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.295][t11720][watchdog] tid 11706 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.295][t11720][watchdog] tid 11707 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.295][t11720][watchdog] tid 11708 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.295][t11720][watchdog] tid 11709 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.295][t11720][watchdog] tid 11710 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.296][t11720][watchdog] tid 11711 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.296][t11720][watchdog] tid 11712 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.296][t11720][watchdog] tid 11713 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.296][t11720][watchdog] tid 11714 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.296][t11720][watchdog] tid 11715 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.296][t11720][watchdog] tid 11716 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.296][t11720][watchdog] tid 11717 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.296][t11720][watchdog] tid 11718 [SDLThread] state=S wchan=futex_wait_queue_me
+[    8.296][t11720][watchdog] tid 11720 [SDLThread] state=R wchan=0
+[   14.482][t11647][AndroidWindowWatcherThread] Native window gone - freezing game and audio.
+[   14.483][t11647][Marathon_AppSetPaused] App paused (game loop + audio stopped).

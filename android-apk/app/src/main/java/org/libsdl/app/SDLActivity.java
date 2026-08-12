@@ -713,9 +713,22 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         // Try a transition to paused state
         if (mNextNativeState == NativeState.PAUSED) {
-            if (mSDLThread != null) {
-                nativePause();
-            }
+            /*
+             * Do not signal SDL's Android pause semaphore here.
+             *
+             * This app has a native-window watcher which owns the actual
+             * gameplay/audio pause transition. SDL's semaphore handshake is
+             * designed for a single thread which pumps events; this app pumps
+             * from the guest and loading paths as well, so a queued
+             * pause/resume pair can leave the SDL thread parked on a futex.
+             * That stops both rendering and the touch-control state from
+             * advancing, including the Start/Back controls at launch.
+             *
+             * The SurfaceView still gets its normal pause transition below.
+             * The native-window watcher will freeze the game when the window
+             * is actually gone and unfreeze it after the replacement window
+             * is available.
+             */
             if (mSurface != null) {
                 mSurface.handlePause();
             }
@@ -735,9 +748,12 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                     mSurface.enableSensor(Sensor.TYPE_ACCELEROMETER, true);
                     mSDLThread.start();
 
-                    // No nativeResume(), don't signal Android_ResumeSem
+                    // Do not signal SDL's Android_ResumeSem; lifecycle pause/
+                    // resume is owned by the native-window watcher.
                 } else {
-                    nativeResume();
+                    // The SurfaceView is resumed below. Avoid SDL's
+                    // pause/resume semaphore handshake (see the paused-state
+                    // comment above).
                 }
                 mSurface.handleResume();
 
