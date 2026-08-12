@@ -20,8 +20,14 @@ struct PushConstants
     float Outline;
 };
 
-Texture2D<float4> g_Texture2DDescriptorHeap[] : register(t0, space0);
-SamplerState g_SamplerDescriptorHeap[] : register(s0, space1);
+#ifdef __spirv__
+#define XENOS_RECOMP_DESCRIPTOR_ARRAY [1024]
+#else
+#define XENOS_RECOMP_DESCRIPTOR_ARRAY []
+#endif
+
+Texture2D<float4> g_Texture2DDescriptorHeap XENOS_RECOMP_DESCRIPTOR_ARRAY : register(t0, space0);
+SamplerState g_SamplerDescriptorHeap XENOS_RECOMP_DESCRIPTOR_ARRAY : register(s0, space1);
 [[vk::push_constant]] ConstantBuffer<PushConstants> g_PushConstants : register(b0, space2);
 
 struct Interpolators
