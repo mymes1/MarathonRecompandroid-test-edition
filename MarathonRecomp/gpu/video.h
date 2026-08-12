@@ -27,6 +27,8 @@ struct Video
     static inline uint32_t s_viewportHeight;
 
     static bool CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry);
+    // Captures the guest execution thread used for startup uploads and Present.
+    static void SetPresentThread();
     static void WaitOnSwapChain();
     static void Present();
     static void StartPipelinePrecompilation();

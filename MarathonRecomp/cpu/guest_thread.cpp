@@ -5,6 +5,7 @@
 #include <kernel/heap.h>
 #include <kernel/function.h>
 #include "ppc_context.h"
+#include <gpu/video.h>
 
 constexpr size_t PCR_SIZE = 0xAB0;
 constexpr size_t TLS_SIZE = 0x100;
@@ -171,6 +172,17 @@ uint32_t GuestThreadHandle::Wait(uint32_t timeout)
 
 uint32_t GuestThread::Start(const GuestThreadParams& params)
 {
+    // The initial guest entry point runs on the worker created by
+    // GuestThread::Start(params, ...), not on the SDL/native thread that
+    // initialized the shared library or created the host device. Capture that
+    // actual guest thread once so startup texture uploads cannot wait for the
+    // Present it is responsible for enqueueing.
+    static std::once_flag presentThreadOnce;
+    std::call_once(presentThreadOnce, []
+    {
+        Video::SetPresentThread();
+    });
+
     const auto procMask = (uint8_t)(params.flags >> 24);
     const auto cpuNumber = procMask == 0 ? 0 : 7 - std::countl_zero(procMask);
 

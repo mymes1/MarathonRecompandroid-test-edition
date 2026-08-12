@@ -1516,7 +1516,10 @@ static void RefreshMaliActiveBufferViews()
     }
 }
 
-static std::thread::id g_presentThreadId = std::this_thread::get_id();
+// Assigned by the first guest execution thread. Do not initialize this from
+// static storage: Android loads the shared library on SDLActivity's thread,
+// then starts the guest entry point on a separate pthread.
+static std::thread::id g_presentThreadId;
 // The guest's loading thread can present during startup while the main game
 // thread is also entering its frame loop. Present advances shared frame
 // state, swapchain image state, command-list state, and the completion flag,
@@ -2322,9 +2325,12 @@ static void ExecuteCopyCommandList(const T& function)
     // recording the current frame: the two command buffers could then encode
     // conflicting oldLayout values and queue submission order would no longer
     // match the layout state observed while recording.
+    const auto currentThreadId = std::this_thread::get_id();
+    const bool isPresentCapableThread = currentThreadId == g_presentThreadId;
     if (g_isMali &&
         g_graphicsCommandListOpen.load(std::memory_order_acquire) &&
-        std::this_thread::get_id() != g_renderThreadId)
+        currentThreadId != g_renderThreadId &&
+        !isPresentCapableThread)
     {
         std::unique_lock stateLock(g_graphicsCommandStateMutex);
         g_graphicsCommandListClosed.wait(stateLock, []
@@ -2333,11 +2339,15 @@ static void ExecuteCopyCommandList(const T& function)
         });
     }
 
-    // Never append a loader upload to an open frame command buffer.  On Mali
+    // Never append a loader upload to an open frame command buffer. On Mali
     // the copy queue aliases the graphics queue, so this submission is ordered
     // on that queue and the fence makes the texture safe before its descriptor
-    // is exposed to guest rendering.  This also keeps render-thread and loader-
-    // thread recording from sharing a VkCommandBuffer.
+    // is exposed to guest rendering. The present-capable guest thread is the
+    // one exception: it may be loading a texture before its first Present, and
+    // waiting for the open list here would deadlock because that same thread
+    // is the only one that can enqueue the Present that closes the list. The
+    // copy submission is placed before the later frame submission on the
+    // shared queue and is completed before this function returns.
     g_copyCommandList->begin();
     RenderCommandList* previousCommandList = g_activeCopyCommandList;
     g_activeCopyCommandList = g_copyCommandList.get();
@@ -3430,6 +3440,11 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     g_graphicsCommandListOpen.store(false, std::memory_order_release);
 
     return true;
+}
+
+void Video::SetPresentThread()
+{
+    g_presentThreadId = std::this_thread::get_id();
 }
 
 static uint32_t g_waitForGPUCount = 0;
