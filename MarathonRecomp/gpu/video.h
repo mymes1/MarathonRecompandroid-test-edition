@@ -217,6 +217,7 @@ struct MaliVertexUploadCache
     uint64_t snapshotGeneration = 0;
     const GuestVertexDeclaration* declaration = nullptr;
     uint32_t stride = 0;
+    uint32_t streamOffset = 0;
 };
 
 // VertexBuffer/IndexBuffer

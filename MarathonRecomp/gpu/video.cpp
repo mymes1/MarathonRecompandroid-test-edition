@@ -1285,16 +1285,25 @@ static void SwapMaliVertexElements(
     uint32_t dataSize,
     uint32_t stream,
     uint32_t stride,
+    uint32_t streamOffset,
     const GuestVertexDeclaration* declaration)
 {
     if (declaration == nullptr || stride == 0)
+        return;
+
+    if (streamOffset > dataSize)
         return;
 
     // Vertex data is a byte stream with fields of different widths. Swapping
     // every four bytes is only correct for an all-32-bit declaration and
     // corrupts SHORT/FLOAT16/UBYTE fields in the mixed declarations used by
     // character and cutscene meshes.
-    const uint32_t vertexCount = dataSize / stride;
+    // The D3D stream offset is part of the vertex-data origin. The bytes before
+    // it may be unrelated padding or data for another stream and must not be
+    // interpreted as vertex zero for this declaration.
+    destination += streamOffset;
+    const uint32_t vertexDataSize = dataSize - streamOffset;
+    const uint32_t vertexCount = vertexDataSize / stride;
     for (uint32_t vertex = 0; vertex < vertexCount; ++vertex)
     {
         uint8_t* vertexData = destination + vertex * stride;
@@ -1347,7 +1356,8 @@ static void SwapMaliVertexElements(
 
 static RenderBufferReference UploadMaliGuestVertexBuffer(
     GuestBuffer* buffer,
-    uint32_t stream)
+    uint32_t stream,
+    uint32_t streamOffset)
 {
     assert(buffer != nullptr);
     assert(stream < std::size(buffer->maliVertexFrameCache));
@@ -1367,9 +1377,18 @@ static RenderBufferReference UploadMaliGuestVertexBuffer(
         cache.snapshotGeneration == buffer->maliGuestSnapshotGeneration &&
         cache.declaration == declaration &&
         cache.stride == stride &&
+        cache.streamOffset == streamOffset &&
         cache.reference.ref != nullptr)
     {
         return cache.reference;
+    }
+
+    if (streamOffset > buffer->dataSize)
+    {
+        LOGF_WARNING("Ignoring Mali vertex stream offset {} beyond buffer size {}.",
+            streamOffset, buffer->dataSize);
+        cache = {};
+        return {};
     }
 
     const void* source = buffer->maliGuestSnapshotValid
@@ -1390,13 +1409,14 @@ static RenderBufferReference UploadMaliGuestVertexBuffer(
         buffer->dataSize, alignof(uint32_t));
     memcpy(allocation.memory, source, buffer->dataSize);
     SwapMaliVertexElements(
-        allocation.memory, buffer->dataSize, stream, stride, declaration);
+        allocation.memory, buffer->dataSize, stream, stride, streamOffset, declaration);
 
     cache.reference = allocation.buffer->at(allocation.offset);
     cache.frameSerial = g_frameUploadSerial[g_frame];
     cache.snapshotGeneration = buffer->maliGuestSnapshotGeneration;
     cache.declaration = declaration;
     cache.stride = stride;
+    cache.streamOffset = streamOffset;
     return cache.reference;
 }
 
@@ -1424,7 +1444,7 @@ static RenderBufferReference GetMaliVertexReference(
     if (buffer->mappedMemory != nullptr)
     {
         const RenderBufferReference reference =
-            UploadMaliGuestVertexBuffer(buffer, stream);
+            UploadMaliGuestVertexBuffer(buffer, stream, offset);
         return RenderBufferReference(reference.ref, reference.offset + offset);
     }
 
@@ -6603,6 +6623,7 @@ static void ProcDrawPrimitiveUP(const RenderCommand& cmd)
             args.vertexStreamZeroSize,
             0,
             args.vertexStreamZeroStride,
+            0,
             g_pipelineState.vertexDeclaration);
     }
     else
