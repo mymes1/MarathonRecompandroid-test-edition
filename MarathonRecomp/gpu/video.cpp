@@ -461,6 +461,9 @@ static void SetTextureDescriptor(
     if (g_isMali && g_queue != nullptr &&
         std::this_thread::get_id() != g_renderThreadId)
     {
+        // Loader workers can publish textures while frames are in flight.
+        // Descriptor writes are not a synchronization primitive on the
+        // fixed Mali descriptor set.
         Video::WaitForGPU();
     }
 
@@ -838,6 +841,7 @@ static ankerl::unordered_dense::map<RenderTexture*, PendingTextureBarrier> g_bar
 static std::vector<RenderTextureBarrier> g_barriers;
 static ankerl::unordered_dense::set<GuestSurface*> g_pendingSurfaceCopies;
 static ankerl::unordered_dense::set<GuestSurface*> g_pendingResolves;
+static std::vector<std::pair<GuestSurface*, uint32_t>> g_surfaceCache;
 
 static std::vector<GuestResource*> g_tempResources[NUM_FRAMES];
 static std::vector<std::unique_ptr<RenderBuffer>> g_tempBuffers[NUM_FRAMES];
@@ -945,6 +949,44 @@ static PrimitiveIndexData<D3DPT_QUADLIST> g_quadIndexData;
 
 static void DestructTempResources()
 {
+    // Resource destruction runs on the render thread, where the normal
+    // descriptor-update guard cannot wait without trying to submit work while
+    // the current command list is open.  This function is entered from
+    // BeginCommandList, after the previous list was submitted, so it is the
+    // safe point to retire all in-flight frames before replacing descriptors
+    // and destroying their texture/framebuffer wrappers.
+    if (g_isMali && g_queue != nullptr && !g_tempResources[g_frame].empty())
+        Video::WaitForGPU();
+
+    // Break links between resources that are being retired in this same
+    // batch before any destructor runs.  Otherwise a surface destroyed first
+    // can leave a later texture with a dangling sourceSurface pointer.
+    auto isPendingResource = [](GuestResource* candidate)
+    {
+        return std::find(g_tempResources[g_frame].begin(),
+            g_tempResources[g_frame].end(), candidate) !=
+            g_tempResources[g_frame].end();
+    };
+    for (auto resource : g_tempResources[g_frame])
+    {
+        if (resource->type == ResourceType::Texture ||
+            resource->type == ResourceType::VolumeTexture ||
+            resource->type == ResourceType::ArrayTexture)
+        {
+            auto texture = reinterpret_cast<GuestTexture*>(resource);
+            if (texture->sourceSurface != nullptr &&
+                isPendingResource(texture->sourceSurface))
+            {
+                texture->sourceSurface = nullptr;
+            }
+        }
+        else if (resource->type == ResourceType::RenderTarget ||
+                 resource->type == ResourceType::DepthStencil)
+        {
+            reinterpret_cast<GuestSurface*>(resource)->destinationTextures.clear();
+        }
+    }
+
     for (auto resource : g_tempResources[g_frame])
     {
         // Barrier and stretch/resolve collections intentionally contain raw
@@ -1054,10 +1096,20 @@ static void DestructTempResources()
                 {
                     g_vertexBuffers[slot] = nullptr;
                     g_vertexBufferOffsets[slot] = 0;
+                    g_vertexBufferViews[slot] = {};
+                    g_inputSlots[slot].stride = 0;
+                    g_dirtyStates.vertexStreamFirst =
+                        std::min<uint8_t>(g_dirtyStates.vertexStreamFirst, slot);
+                    g_dirtyStates.vertexStreamLast =
+                        std::max<uint8_t>(g_dirtyStates.vertexStreamLast, slot);
                 }
             }
             if (g_indexBuffer == buffer)
+            {
                 g_indexBuffer = nullptr;
+                g_indexBufferView = RenderIndexBufferView({}, 0, RenderFormat::R16_UINT);
+                g_dirtyStates.indices = true;
+            }
 
             if (buffer->mappedMemory != nullptr)
                 g_userHeap.Free(buffer->mappedMemory);
@@ -1082,6 +1134,13 @@ static void DestructTempResources()
         {
             const auto surface = reinterpret_cast<GuestSurface*>(resource);
             removeTextureReferences(surface);
+            g_surfaceCache.erase(
+                std::remove_if(g_surfaceCache.begin(), g_surfaceCache.end(),
+                    [surface](const auto& entry)
+                    {
+                        return entry.first == surface;
+                    }),
+                g_surfaceCache.end());
 
             if (surface->descriptorIndex != NULL)
             {
@@ -1264,8 +1323,7 @@ static void SwapMaliVertexElements(
                     memcpy(field + component, &value, sizeof(value));
                 }
             }
-            else if (element.type != D3DDECLTYPE_D3DCOLOR &&
-                     element.type != D3DDECLTYPE_UBYTE4 &&
+            else if (element.type != D3DDECLTYPE_UBYTE4 &&
                      element.type != D3DDECLTYPE_UBYTE4_2 &&
                      element.type != D3DDECLTYPE_UBYTE4N &&
                      element.type != D3DDECLTYPE_UBYTE4N_2)
@@ -1392,7 +1450,18 @@ static void RefreshMaliActiveBufferViews()
     {
         GuestBuffer* buffer = g_vertexBuffers[slot];
         if (buffer == nullptr)
+        {
+            if (g_vertexBufferViews[slot].buffer.ref != nullptr)
+            {
+                g_vertexBufferViews[slot] = {};
+                g_inputSlots[slot].stride = 0;
+                g_dirtyStates.vertexStreamFirst =
+                    std::min<uint8_t>(g_dirtyStates.vertexStreamFirst, slot);
+                g_dirtyStates.vertexStreamLast =
+                    std::max<uint8_t>(g_dirtyStates.vertexStreamLast, slot);
+            }
             continue;
+        }
 
         const RenderBufferReference reference =
             GetMaliVertexReference(buffer, slot, g_vertexBufferOffsets[slot]);
@@ -1414,6 +1483,11 @@ static void RefreshMaliActiveBufferViews()
             g_indexBufferView.buffer = reference;
             g_dirtyStates.indices = true;
         }
+    }
+    else if (g_indexBufferView.buffer.ref != nullptr)
+    {
+        g_indexBufferView = RenderIndexBufferView({}, 0, RenderFormat::R16_UINT);
+        g_dirtyStates.indices = true;
     }
 }
 
@@ -4749,8 +4823,6 @@ static GuestBuffer* CreateIndexBuffer(uint32_t length, uint32_t, uint32_t format
 #endif
     return buffer;
 }
-
-static std::vector<std::pair<GuestSurface*, uint32_t>> g_surfaceCache;
 
 // TODO: Singleplayer (possibly) uses the same memory location in EDRAM for HDR and FB0 surfaces,
 // so we just remember who was created first and use that instead of creating a new one.
