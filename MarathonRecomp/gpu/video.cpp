@@ -382,7 +382,12 @@ static std::unique_ptr<RenderCommandQueue> g_queue;
 static std::unique_ptr<RenderCommandList> g_commandLists[NUM_FRAMES];
 static std::unique_ptr<RenderCommandFence> g_commandFences[NUM_FRAMES];
 static std::unique_ptr<RenderQueryPool> g_queryPools[NUM_FRAMES];
-static bool g_commandListStates[NUM_FRAMES];
+// These flags are read by loader/guest threads when they publish descriptors
+// while the render thread is submitting frames.  They must be atomic: a
+// descriptor update can happen during device bootstrap, before the first
+// render command list has been submitted.
+static std::atomic<bool> g_commandListStates[NUM_FRAMES];
+static std::mutex g_waitForGPUMutex;
 
 static Mutex g_copyMutex;
 // Mali devices must not use a second virtual queue for uploads.  The stock
@@ -3403,6 +3408,11 @@ static uint32_t g_waitForGPUCount = 0;
 
 void Video::WaitForGPU()
 {
+    // Descriptor publication can be requested by more than one loader thread.
+    // Serialize the fence consumption so two callers cannot wait/reset the same
+    // command fence concurrently.
+    std::lock_guard waitLock(g_waitForGPUMutex);
+
     g_waitForGPUCount++;
 
     // Wait for all queued frames to finish.
@@ -3415,11 +3425,11 @@ void Video::WaitForGPU()
         }
     }
 
-    // Execute an empty command list and wait for it to end to guarantee that any remaining presentation has finished.
-    g_commandLists[0]->begin();
-    g_commandLists[0]->end();
-    g_queue->executeCommandLists(g_commandLists[0].get(), g_commandFences[0].get());
-    g_queue->waitForCommandFence(g_commandFences[0].get());
+    // The per-frame fences above cover every submitted render command list.
+    // Do not recycle g_commandLists[0] here: during guest bootstrap that list
+    // is intentionally still open, and during normal rendering it may be the
+    // current frame list.  Calling begin()/end() on it from a loader thread
+    // races command recording and crashes Android Mali in endActiveRenderPass().
 }
 
 static uint32_t getSetAddress(uint32_t base, int index) {

@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recomp Mali startup-fix APK"
-description = "Debug arm64-v8a APK rebuilt for Samsung Galaxy Tab A9 SM-X110 / Android 15. Includes synchronized fixed-size descriptor SPIR-V, tracked shader include dependencies, and Mali MSAA shader startup guards."
+title = "Marathon Recompiled debug APK"
+description = "Fresh arm64-v8a debug APK rebuilt with the current Mali startup-crash safeguards. APK archive and ELF checks passed."

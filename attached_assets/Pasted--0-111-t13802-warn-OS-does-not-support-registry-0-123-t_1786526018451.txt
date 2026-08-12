@@ -1,0 +1,104 @@
+[    0.111][t13802][warn][*] OS does not support registry.
+[    0.123][t13802][logger] Marathon Recomp log started
+[    0.123][t13802][build] === APK VERSION: 1.0.0 ===
+[    0.123][t13802][build] ANDROID_BUILD_ID=1.0.0-release
+[    0.123][t13802][device] device=SM-X110 brand=samsung soc=MT8781V/NA android=15 sdk=35 vulkan_hal=mali egl_hal=meow abi=arm64-v8a ram_mb=3740
+[    0.183][t13802][*] Saving configuration...
+[    0.185][t13802][warn][*] Host Startup
+[    0.784][t13802][XAudioInitializeSystem] SDL audio driver: "openslES".
+[    0.892][t13802][*] Audio device opened: freq 48000, channels 2, samples 1024 (requested 1024)
+[    0.923][t13802][*] SDL video driver: "Android"
+[    0.991][t13802][AndroidGetCustomVulkanLoader] Android Vulkan driver mode: Auto.
+[    0.991][t13802][warn][AndroidGetCustomVulkanLoader] Detected non-Adreno GPU ("mali/meow"): the bundled Turnip driver is Adreno-only, using the system Vulkan driver.
+[    1.015][t13802][CreateHostDevice] Mali compatibility path: using CPU RGBA texture fallback.
+[    1.015][t13802][warn][CreateHostDevice] BC texture formats are unsupported by this device. Textures will be decompressed on the CPU at load time, increasing memory usage.
+[    1.015][t13802][warn][CreateHostDevice] Mali compatibility path: limiting bindless descriptors to 1024 textures and 1024 samplers to prevent libGLES_mali shader compiler crashes.
+[    1.015][t13802][CreateHostDevice] Mali compatibility path: conservative Vulkan capabilities enabled.
+[    1.015][t13802][CreateHostDevice] Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.
+[    1.015][t13802][warn][CreateHostDevice] Descriptor set sizes clamped to device limits: 1024 textures, 1024 samplers.
+[    1.015][t13802][*] Saving configuration...
+[    1.016][t13802][CreateHostDevice] CreateHostDevice: loading embedded shader cache.
+[    1.032][t13802][CreateHostDevice] CreateHostDevice: embedded shader cache loaded.
+[    1.032][t13802][*] Saving configuration...
+[    1.301][t13802][android] swapchain (re)created successfully
+[    1.303][t13802][warn][*] Start Guest Thread
+[    1.303][t13802][warn][*] /storage/emulated/0/Android/data/com.sega.marathon/files/MarathonRecomp/game/default.xex
+[    1.336][t13802][*] Changed resolution: 1340x800
+[    1.337][t13802][NetDll_WSAStartup] !!! STUB !!!
+[    1.338][t13802][warn][CreateDevice] 0x0 0x1 0x0 0x1 0xa0a60 0x1000a0a5c
+
+[    1.418][t13802][*] Loading file: archives/system.arc
+[    1.423][t13802][Game] Loading file: "game:\xenon\archives\system.arc"
+[    1.425][t13802][*] Loading file: archives/sprite.arc
+[    1.425][t13802][Game] Loading file: "game:\win32\archives\sprite.arc"
+[    1.426][t13802][*] Loading file: archives/cache.arc
+[    1.426][t13802][Game] Loading file: "game:\xenon\archives\cache.arc"
+[    1.430][t13802][*] Loading file: archives/particle_data.arc
+[    1.430][t13802][Game] Loading file: "game:\win32\archives\particle_data.arc"
+[    1.463][t13802][*] Loading file: archives/shader.arc
+[    1.463][t13802][Game] Loading file: "game:\xenon\archives\shader.arc"
+[    1.473][t13802][*] Loading file: 
+[    1.486][t13802][ExRegisterTitleTerminateNotification] !!! STUB !!!
+[    1.487][t13802][ExCreateThread] 0x1000A0674, 0x0, 0x0, 0x0, 0x8255B848, 0x0, 0x10000001 C3E88A65
+[    1.487][t13802][ObDereferenceObject] !!! STUB !!!
+[    1.488][t13802][ExCreateThread] 0x1000A0660, 0x0, 0x101AE23F8, 0x826FE080, 0x825866A8, 0x1AE23E0, 0x1 E1C3237A
+[    1.488][t13802][ExCreateThread] 0x1000A0660, 0x0, 0x101AE24F8, 0x826FE080, 0x825866A8, 0x1AE24E0, 0x1 4EFF30B0
+[    1.488][t13802][*] Loading file: shader/primitive/primitive.fx
+[    1.490][t13802][*] Loading file: shader/primitive/primitive.fx
+[    1.491][t13802][*] Loading file: shader/std/no_shader.fxo
+[    1.491][t13802][*] Loading file: shader/skin/no_shader.fxo
+[    1.492][t13802][*] Loading file: shader/morph/no_shader.fxo
+[    1.492][t13802][*] Loading file: shader/np/no_shader.fxo
+[    1.493][t13802][*] Loading file: shader/skin_np/no_shader.fxo
+[    1.493][t13802][*] Loading file: shader/morph_np/no_shader.fxo
+[    1.493][t13802][*] Loading file: shader/lm/no_shader.fxo
+[    1.494][t13802][*] Loading file: shader/lm_np/no_shader.fxo
+[    1.494][t13802][*] Loading file: shader/primitive/rt_restoration.fx
+[    1.495][t13802][*] Loading file: shader/primitive/csd.fx
+[    1.497][t13802][*] Loading file: 
+[    1.502][t13802][*] Loading file: shader/Common.fx
+[    1.502][t13802][*] Loading file: shader/filter/BloomFilter.fx
+[    1.503][t13802][*] Loading file: shader/filter/BurnoutBlurFilter.fx
+[    1.504][t13802][*] Loading file: shader/filter/ColorCopyFilter.fx
+[    1.504][t13802][*] Loading file: shader/filter/ColorCorrectionFilter.fx
+[    1.505][t13802][*] Loading file: shader/filter/ColorOutFilter.fx
+[    1.505][t13802][*] Loading file: shader/filter/CopyFilter.fx
+[    1.506][t13802][*] Loading file: shader/filter/DepthOfFieldFilter.fx
+[    1.507][t13802][*] Loading file: shader/filter/MaskCopyFilter.fx
+[    1.507][t13802][*] Loading file: shader/filter/MotionBlurFilter.fx
+[    1.508][t13802][*] Loading file: shader/filter/PhaseShiftFilter.fx
+[    1.508][t13802][*] Loading file: shader/filter/SampleFilter.fx
+[crash] FATAL SIGNAL 11 (SIGSEGV) code=1 tid=13802 fault_addr=0x38
+[crash] pc=0x75d2117274 (libGLES_mali.so+0x6c6274) lr=0x75d21171d4 (libGLES_mali.so+0x6c61d4) sp=0x74e5c33930
+[crash] backtrace (best effort):
+[crash] #0 0x74e8ea90a4 (libmain.so+0xc680a4)
+[crash] #1 0x76ddc6b0a4 (libsigchain.so+0x70a4)
+[crash] #2 0x76ef73c89c ([vdso]+0x89c)
+[crash] #3 0x75d2117274 (libGLES_mali.so+0x6c6274)
+[crash] #4 0x75d21171d4 (libGLES_mali.so+0x6c61d4)
+[crash] #5 0x74eb40a5c0 (libmain.so+0x31c95c0)
+[crash] #6 0x74e8ecb5b8 (libmain.so+0xc8a5b8)
+[crash] #7 0x74e8ed0a1c (libmain.so+0xc8fa1c)
+[crash] #8 0x74ea1cf41c (libmain.so+0x1f8e41c)
+[crash] #9 0x74ea1cf7f0 (libmain.so+0x1f8e7f0)
+[crash] #10 0x74ea384db8 (libmain.so+0x2143db8)
+[crash] #11 0x74ea386968 (libmain.so+0x2145968)
+[crash] #12 0x74ea2e1430 (libmain.so+0x20a0430)
+[crash] #13 0x74ea2ea030 (libmain.so+0x20a9030)
+[crash] #14 0x74e9329ec4 (libmain.so+0x10e8ec4)
+[crash] #15 0x74ea3b6e1c (libmain.so+0x2175e1c)
+[crash] #16 0x74e8e085e0 (libmain.so+0xbc75e0)
+[crash] #17 0x74e9adaff4 (libmain.so+0x1899ff4)
+[crash] #18 0x74ea0a8db4 (libmain.so+0x1e67db4)
+[crash] #19 0x74e8ec00fc (libmain.so+0xc7f0fc)
+[crash] #20 0x74e8e0b224 (libmain.so+0xbca224)
+[crash] #21 0x74e92f0280 (libmain.so+0x10af280)
+[crash] #22 0x761e73a3a4 (libart.so+0x2c23a4)
+[crash] #23 0x761e723264 (libart.so+0x2ab264)
+[crash] #24 0x761ecf2974 (libart.so+0x87a974)
+[crash] #25 0x761eb74e58 (libart.so+0x6fce58)
+[crash] #26 0x761e775e4c (libart.so+0x2fde4c)
+[crash] #27 0x761e775a84 (libart.so+0x2fda84)
+[crash] #28 0x761e775408 (libart.so+0x2fd408)
+[crash] #29 0x761e73a4dc (libart.so+0x2c24dc)
+[crash] end of report; the system tombstone (if any) has the full backtrace.
