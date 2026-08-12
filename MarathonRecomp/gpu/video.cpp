@@ -3287,9 +3287,15 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     desc.depthTargetFormat = RenderFormat::D32_FLOAT_S8_UINT;
     g_copyDepthPipeline = g_device->createGraphicsPipeline(desc);
 
-    g_resolveMsaaColorShaders[0] = CREATE_SHADER(resolve_msaa_color_2x);
-    g_resolveMsaaColorShaders[1] = CREATE_SHADER(resolve_msaa_color_4x);
-    g_resolveMsaaColorShaders[2] = CREATE_SHADER(resolve_msaa_color_8x);
+    // MSAA is disabled on Mali-G57. Do not even create the unused multisample
+    // shader modules: some Android Mali releases validate/compile descriptor
+    // declarations during module creation, before a pipeline is requested.
+    if (!g_isMali)
+    {
+        g_resolveMsaaColorShaders[0] = CREATE_SHADER(resolve_msaa_color_2x);
+        g_resolveMsaaColorShaders[1] = CREATE_SHADER(resolve_msaa_color_4x);
+        g_resolveMsaaColorShaders[2] = CREATE_SHADER(resolve_msaa_color_8x);
+    }
 
     // Mali-G57 (SM-X110 and variants) forces MSAA off via ApplyLowEndDefaults
     // and its shader compiler crashes on multisampled-depth resolve shaders.

@@ -536,6 +536,18 @@ target_precompile_headers(MarathonRecomp PUBLIC ${MARATHON_RECOMP_PRECOMPILED_HE
 function(compile_shader FILE_PATH TARGET_NAME)
     set(HLSL_FILE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/gpu/shader/hlsl/${FILE_PATH}.hlsl)
     set(MSL_FILE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/gpu/shader/msl/${FILE_PATH}.metal)
+    # DXC follows the includes while compiling, but CMake's custom-command
+    # dependency scanner does not. Keep generated shader headers in sync with
+    # the shared descriptor declarations and common shader snippets; otherwise
+    # a changed include can leave stale SPIR-V embedded in the Android binary.
+    set(HLSL_SHARED_DEPENDENCIES
+        ${CMAKE_CURRENT_SOURCE_DIR}/../tools/XenosRecomp/XenosRecomp/shader_common.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/gpu/shader/hlsl/copy_common.hlsli
+        ${CMAKE_CURRENT_SOURCE_DIR}/gpu/shader/hlsl/imgui_common.hlsli
+        ${CMAKE_CURRENT_SOURCE_DIR}/gpu/shader/hlsl/gaussian_blur.hlsli
+        ${CMAKE_CURRENT_SOURCE_DIR}/gpu/shader/hlsl/resolve_msaa_color.hlsli
+        ${CMAKE_CURRENT_SOURCE_DIR}/gpu/shader/hlsl/resolve_msaa_depth.hlsli
+    )
     cmake_path(GET HLSL_FILE_PATH STEM HLSL_NAME)
     cmake_path(GET MSL_FILE_PATH STEM MSL_NAME)
     if (MARATHON_RECOMP_METAL)
@@ -555,14 +567,14 @@ function(compile_shader FILE_PATH TARGET_NAME)
         add_custom_command(
             OUTPUT ${HLSL_FILE_PATH}.dxil.h
             COMMAND ${DIRECTX_DXC_TOOL} -T ${TARGET_NAME} -HV 2021 -all-resources-bound -Wno-ignored-attributes -DMARATHON_RECOMP -E shaderMain -Fh ${HLSL_FILE_PATH}.dxil.h ${HLSL_FILE_PATH} -Vn g_${HLSL_NAME}_dxil
-            DEPENDS ${HLSL_FILE_PATH}
+            DEPENDS ${HLSL_FILE_PATH} ${HLSL_SHARED_DEPENDENCIES}
         )
         target_sources(MarathonRecomp PRIVATE ${HLSL_FILE_PATH}.dxil.h)
     endif()
     add_custom_command(
         OUTPUT ${HLSL_FILE_PATH}.spirv.h
         COMMAND ${DIRECTX_DXC_TOOL} -T ${TARGET_NAME} -HV 2021 -all-resources-bound -spirv -fvk-use-dx-layout ${ARGN} -DMARATHON_RECOMP -E shaderMain -Fh ${HLSL_FILE_PATH}.spirv.h ${HLSL_FILE_PATH} -Vn g_${HLSL_NAME}_spirv
-        DEPENDS ${HLSL_FILE_PATH}
+        DEPENDS ${HLSL_FILE_PATH} ${HLSL_SHARED_DEPENDENCIES}
     )
     target_sources(MarathonRecomp PRIVATE ${HLSL_FILE_PATH}.spirv.h)
 endfunction()

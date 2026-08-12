@@ -2,7 +2,7 @@
 
 #include "copy_common.hlsli"
 
-Texture2DMS<float, SAMPLE_COUNT> g_Texture2DMSDescriptorHeap[] : register(t0, space0);
+Texture2DMS<float, SAMPLE_COUNT> g_Texture2DMSDescriptorHeap XENOS_RECOMP_DESCRIPTOR_ARRAY : register(t0, space0);
 
 float shaderMain(in float4 position : SV_Position) : SV_Depth
 {
