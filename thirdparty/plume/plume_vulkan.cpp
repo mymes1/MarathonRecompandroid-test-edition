@@ -48,6 +48,13 @@ namespace plume {
     static std::mutex g_liveVulkanTexturesMutex;
     static std::unordered_set<const VulkanTexture *> g_liveVulkanTextures;
     static std::atomic<uint64_t> g_nextVulkanTextureGeneration{1};
+    // Some Android Mali drivers are not safe when shader/pipeline compilation
+    // overlaps Vulkan object creation from a loader thread.  Vulkan permits
+    // these calls from different threads, but the vendor implementation can
+    // crash inside libGLES_mali while it is compiling a pipeline.  Keep all
+    // device-object construction in one critical section so resource loading
+    // cannot race render-thread pipeline creation.
+    static std::mutex g_vulkanObjectCreationMutex;
 
     static bool isLiveVulkanTexture(const VulkanTexture *texture) {
         if (texture == nullptr) {
@@ -1069,6 +1076,7 @@ namespace plume {
     }
 
     std::unique_ptr<RenderBufferFormattedView> VulkanBuffer::createBufferFormattedView(RenderFormat format) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanBufferFormattedView>(this, format);
     }
 
@@ -1300,6 +1308,7 @@ namespace plume {
     }
 
     std::unique_ptr<RenderTextureView> VulkanTexture::createTextureView(const RenderTextureViewDesc &desc) const {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanTextureView>(this, desc);
     }
 
@@ -4676,66 +4685,82 @@ namespace plume {
     }
 
     std::unique_ptr<RenderDescriptorSet> VulkanDevice::createDescriptorSet(const RenderDescriptorSetDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanDescriptorSet>(this, desc);
     }
 
     std::unique_ptr<RenderShader> VulkanDevice::createShader(const void *data, uint64_t size, const char *entryPointName, RenderShaderFormat format) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanShader>(this, data, size, entryPointName, format);
     }
 
     std::unique_ptr<RenderSampler> VulkanDevice::createSampler(const RenderSamplerDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanSampler>(this, desc);
     }
 
     std::unique_ptr<RenderPipeline> VulkanDevice::createComputePipeline(const RenderComputePipelineDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanComputePipeline>(this, desc);
     }
 
     std::unique_ptr<RenderPipeline> VulkanDevice::createGraphicsPipeline(const RenderGraphicsPipelineDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanGraphicsPipeline>(this, desc);
     }
 
     std::unique_ptr<RenderPipeline> VulkanDevice::createRaytracingPipeline(const RenderRaytracingPipelineDesc &desc, const RenderPipeline *previousPipeline) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanRaytracingPipeline>(this, desc, previousPipeline);
     }
 
     std::unique_ptr<RenderCommandQueue> VulkanDevice::createCommandQueue(RenderCommandListType type) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanCommandQueue>(this, type);
     }
 
     std::unique_ptr<RenderBuffer> VulkanDevice::createBuffer(const RenderBufferDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanBuffer>(this, nullptr, desc);
     }
 
     std::unique_ptr<RenderTexture> VulkanDevice::createTexture(const RenderTextureDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanTexture>(this, nullptr, desc);
     }
 
     std::unique_ptr<RenderAccelerationStructure> VulkanDevice::createAccelerationStructure(const RenderAccelerationStructureDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanAccelerationStructure>(this, desc);
     }
 
     std::unique_ptr<RenderPool> VulkanDevice::createPool(const RenderPoolDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanPool>(this, desc);
     }
 
     std::unique_ptr<RenderPipelineLayout> VulkanDevice::createPipelineLayout(const RenderPipelineLayoutDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanPipelineLayout>(this, desc);
     }
 
     std::unique_ptr<RenderCommandFence> VulkanDevice::createCommandFence() {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanCommandFence>(this);
     }
 
     std::unique_ptr<RenderCommandSemaphore> VulkanDevice::createCommandSemaphore() {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanCommandSemaphore>(this);
     }
 
     std::unique_ptr<RenderFramebuffer> VulkanDevice::createFramebuffer(const RenderFramebufferDesc &desc) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanFramebuffer>(this, desc);
     }
 
     std::unique_ptr<RenderQueryPool> VulkanDevice::createQueryPool(uint32_t queryCount) {
+        std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanQueryPool>(this, queryCount);
     }
 
