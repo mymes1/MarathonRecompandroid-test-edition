@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recompiled Mali-compatible APK"
-description = "Fresh arm64-v8a debug APK with the SM-X110 Mali vertex-offset corruption fix and existing Android 15 crash safeguards. Archive and ELF checks passed."
+title = "Marathon Recompiled Android APK"
+description = "Fresh arm64-v8a debug APK with the Mali render-queue texture-upload synchronization fix."

@@ -1,0 +1,910 @@
+[    0.096][t31345][warn][*] OS does not support registry.
+[    0.101][t31345][logger] Marathon Recomp log started
+[    0.102][t31345][build] === APK VERSION: 1.0.0 ===
+[    0.102][t31345][build] ANDROID_BUILD_ID=1.0.0-release
+[    0.102][t31345][device] device=SM-X110 brand=samsung soc=MT8781V/NA android=15 sdk=35 vulkan_hal=mali egl_hal=meow abi=arm64-v8a ram_mb=3740
+[    0.178][t31345][*] Saving configuration...
+[    0.180][t31345][warn][*] Host Startup
+[    0.922][t31345][XAudioInitializeSystem] SDL audio driver: "openslES".
+[    0.982][t31345][*] Audio device opened: freq 48000, channels 2, samples 1024 (requested 1024)
+[    1.059][t31345][*] SDL video driver: "Android"
+[    1.134][t31345][AndroidGetCustomVulkanLoader] Android Vulkan driver mode: Auto.
+[    1.134][t31345][warn][AndroidGetCustomVulkanLoader] Detected non-Adreno GPU ("mali/meow"): the bundled Turnip driver is Adreno-only, using the system Vulkan driver.
+[    1.189][t31345][CreateHostDevice] Mali compatibility path: using CPU RGBA texture fallback.
+[    1.189][t31345][warn][CreateHostDevice] BC texture formats are unsupported by this device. Textures will be decompressed on the CPU at load time, increasing memory usage.
+[    1.189][t31345][warn][CreateHostDevice] Mali compatibility path: limiting bindless descriptors to 1024 textures and 1024 samplers to prevent libGLES_mali shader compiler crashes.
+[    1.189][t31345][CreateHostDevice] Mali compatibility path: conservative Vulkan capabilities enabled.
+[    1.189][t31345][CreateHostDevice] Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.
+[    1.189][t31345][warn][CreateHostDevice] Descriptor set sizes clamped to device limits: 1024 textures, 1024 samplers.
+[    1.189][t31345][*] Saving configuration...
+[    1.189][t31345][CreateHostDevice] CreateHostDevice: loading embedded shader cache.
+[    1.213][t31345][CreateHostDevice] CreateHostDevice: embedded shader cache loaded.
+[    1.213][t31345][*] Saving configuration...
+[    1.438][t31345][android] swapchain (re)created successfully
+[    1.438][t31345][warn][*] Start Guest Thread
+[    1.439][t31345][warn][*] /storage/emulated/0/Android/data/com.sega.marathon/files/MarathonRecomp/game/default.xex
+[    1.465][t31345][*] Changed resolution: 1340x800
+[    1.466][t31345][NetDll_WSAStartup] !!! STUB !!!
+[    1.466][t31345][warn][CreateDevice] 0x0 0x1 0x0 0x1 0xa0a60 0x1000a0a5c
+
+[    1.534][t31345][*] Loading file: archives/system.arc
+[    1.539][t31345][Game] Loading file: "game:\xenon\archives\system.arc"
+[    1.541][t31345][*] Loading file: archives/sprite.arc
+[    1.541][t31345][Game] Loading file: "game:\win32\archives\sprite.arc"
+[    1.543][t31345][*] Loading file: archives/cache.arc
+[    1.543][t31345][Game] Loading file: "game:\xenon\archives\cache.arc"
+[    1.546][t31345][*] Loading file: archives/particle_data.arc
+[    1.546][t31345][Game] Loading file: "game:\win32\archives\particle_data.arc"
+[    1.578][t31345][*] Loading file: archives/shader.arc
+[    1.578][t31345][Game] Loading file: "game:\xenon\archives\shader.arc"
+[    1.598][t31345][*] Loading file: 
+[    1.613][t31345][ExRegisterTitleTerminateNotification] !!! STUB !!!
+[    1.614][t31345][ExCreateThread] 0x1000A0674, 0x0, 0x0, 0x0, 0x8255B848, 0x0, 0x10000001 3101502C
+[    1.614][t31345][ObDereferenceObject] !!! STUB !!!
+[    1.615][t31345][ExCreateThread] 0x1000A0660, 0x0, 0x1019E23F8, 0x826FE080, 0x825866A8, 0x19E23E0, 0x1 81FDBF54
+[    1.615][t31345][ExCreateThread] 0x1000A0660, 0x0, 0x101AE24F8, 0x826FE080, 0x825866A8, 0x1AE24E0, 0x1 7DFA3C65
+[    1.616][t31345][*] Loading file: shader/primitive/primitive.fx
+[    1.620][t31345][*] Loading file: shader/primitive/primitive.fx
+[    1.620][t31345][*] Loading file: shader/std/no_shader.fxo
+[    1.621][t31345][*] Loading file: shader/skin/no_shader.fxo
+[    1.621][t31345][*] Loading file: shader/morph/no_shader.fxo
+[    1.621][t31345][*] Loading file: shader/np/no_shader.fxo
+[    1.622][t31345][*] Loading file: shader/skin_np/no_shader.fxo
+[    1.622][t31345][*] Loading file: shader/morph_np/no_shader.fxo
+[    1.622][t31345][*] Loading file: shader/lm/no_shader.fxo
+[    1.623][t31345][*] Loading file: shader/lm_np/no_shader.fxo
+[    1.623][t31345][*] Loading file: shader/primitive/rt_restoration.fx
+[    1.624][t31345][*] Loading file: shader/primitive/csd.fx
+[    1.625][t31345][*] Loading file: 
+[    1.628][t31345][*] Loading file: shader/Common.fx
+[    1.629][t31345][*] Loading file: shader/filter/BloomFilter.fx
+[    1.629][t31345][*] Loading file: shader/filter/BurnoutBlurFilter.fx
+[    1.629][t31345][*] Loading file: shader/filter/ColorCopyFilter.fx
+[    1.630][t31345][*] Loading file: shader/filter/ColorCorrectionFilter.fx
+[    1.630][t31345][*] Loading file: shader/filter/ColorOutFilter.fx
+[    1.631][t31345][*] Loading file: shader/filter/CopyFilter.fx
+[    1.631][t31345][*] Loading file: shader/filter/DepthOfFieldFilter.fx
+[    1.632][t31345][*] Loading file: shader/filter/MaskCopyFilter.fx
+[    1.632][t31345][*] Loading file: shader/filter/MotionBlurFilter.fx
+[    1.632][t31345][*] Loading file: shader/filter/PhaseShiftFilter.fx
+[    1.633][t31345][*] Loading file: shader/filter/SampleFilter.fx
+[    1.638][t31345][*] Loading file: shader/primitive/AcrobataPrimitive.fx
+[    1.647][t31345][*] Loading file: particle/pe/sonicnext
+[    1.648][t31345][*] Loading file: shader/std/pe.fxo
+[    1.649][t31345][*] Loading file: shader/std/pe.fxo
+[    1.649][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.650][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.651][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.652][t31345][*] Loading file: shader/std/pe.fxo
+[    1.653][t31345][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8DB8, 0x826FE080, 0x825866A8, 0x1FC8DA0, 0x1 7D38F4B2
+[    1.653][t31345][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8E38, 0x826FE080, 0x825866A8, 0x1FC8E20, 0x1 4FCD30DC
+[    1.653][t31345][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8EB8, 0x826FE080, 0x825866A8, 0x1FC8EA0, 0x1 CE464A97
+[    1.653][t31345][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8F38, 0x826FE080, 0x825866A8, 0x1FC8F20, 0x1 D01A1B23
+[    1.653][t31345][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8FB8, 0x826FE080, 0x825866A8, 0x1FC8FA0, 0x1 701F4C14
+[    1.653][t31345][ExCreateThread] 0x1000A0760, 0x0, 0x101FC9038, 0x826FE080, 0x825866A8, 0x1FC9020, 0x1 8E9CFEB3
+[    1.654][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9238, 0x826FE080, 0x825866A8, 0x1FC9220, 0x1 DD6E2F34
+[    1.654][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC92B8, 0x826FE080, 0x825866A8, 0x1FC92A0, 0x1 6DF5670C
+[    1.655][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9338, 0x826FE080, 0x825866A8, 0x1FC9320, 0x1 E40B9AB
+[    1.655][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC93B8, 0x826FE080, 0x825866A8, 0x1FC93A0, 0x1 91F80559
+[    1.655][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9438, 0x826FE080, 0x825866A8, 0x1FC9420, 0x1 9E1695D0
+[    1.655][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC95B8, 0x826FE080, 0x825866A8, 0x1FC95A0, 0x1 95A706D0
+[    1.655][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9638, 0x826FE080, 0x825866A8, 0x1FC9620, 0x1 B661E8F9
+[    1.655][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC96B8, 0x826FE080, 0x825866A8, 0x1FC96A0, 0x1 19857905
+[    1.655][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9738, 0x826FE080, 0x825866A8, 0x1FC9720, 0x1 D013D9B3
+[    1.655][t31345][ExCreateThread] 0x1000A0750, 0x0, 0x101FC97B8, 0x826FE080, 0x825866A8, 0x1FC97A0, 0x1 4E7B4BDC
+[    1.655][t31345][*] Loading file: scripts/render/render_default.lua
+[    1.659][t31345][*] Loading file: sprite/loading/loading_english
+[    1.663][t31345][*] CSD freed: 0x101FB8C60
+[    1.663][t31345][*] CSD loaded: sprite/loading/loading_english (0x101FD6E60)
+[    1.663][t31345][*] CSD modifier(s) redirected: sprite/loading/loading
+[    1.665][t31345][ExCreateThread] 0x1000A0920, 0x0, 0x101FBBBF8, 0x826FE080, 0x825866A8, 0x1FBBBE0, 0x1 ABF3D617
+[    1.665][t31345][*] Loading file: 
+[    1.666][t31345][*] Loading file: archives/cache.arc
+[    1.666][t31345][*] Loading file: archives/enemy.arc
+[    1.666][t31345][Game] Loading file: "game:\xenon\archives\enemy.arc"
+[    1.667][t31345][*] Loading file: archives/event.arc
+[    1.667][t31345][Game] Loading file: "game:\xenon\archives\event.arc"
+[    1.669][t31345][*] Loading file: archives/game.arc
+[    1.669][t31345][Game] Loading file: "game:\xenon\archives\game.arc"
+[    1.669][t31345][*] Loading file: archives/human.arc
+[    1.669][t31345][Game] Loading file: "game:\xenon\archives\human.arc"
+[    1.675][t31345][*] Loading file: archives/object.arc
+[    1.675][t31345][Game] Loading file: "game:\xenon\archives\object.arc"
+[    1.678][t31345][*] Loading file: archives/particle.arc
+[    1.678][t31345][Game] Loading file: "game:\xenon\archives\particle.arc"
+[    1.679][t31345][*] Loading file: archives/scripts.arc
+[    1.679][t31345][Game] Loading file: "game:\xenon\archives\scripts.arc"
+[    1.681][t31345][*] Loading file: archives/sound.arc
+[    1.681][t31345][Game] Loading file: "game:\xenon\archives\sound.arc"
+[    1.681][t31345][*] Loading file: archives/stage.arc
+[    1.681][t31345][Game] Loading file: "game:\xenon\archives\stage.arc"
+[    1.682][t31345][*] Loading file: archives/text.arc
+[    1.683][t31345][Game] Loading file: "game:\xenon\archives\text.arc"
+[    1.684][t31345][*] Loading file: archives/player.arc
+[    1.684][t31345][Game] Loading file: "game:\xenon\archives\player.arc"
+[    1.686][t31345][*] Loading file: archives/enemy_data.arc
+[    1.686][t31345][Game] Loading file: "game:\win32\archives\enemy_data.arc"
+[    1.687][t31345][*] Loading file: archives/event_data.arc
+[    1.687][t31345][Game] Loading file: "game:\win32\archives\event_data.arc"
+[    1.689][t31345][*] Loading file: archives/particle_data.arc
+[    1.689][t31345][*] Loading file: archives/player_amy.arc
+[    1.689][t31345][Game] Loading file: "game:\win32\archives\player_amy.arc"
+[    1.692][t31345][*] Loading file: archives/player_blaze.arc
+[    1.692][t31345][Game] Loading file: "game:\win32\archives\player_blaze.arc"
+[    1.694][t31345][*] Loading file: archives/player_common.arc
+[    1.695][t31345][Game] Loading file: "game:\win32\archives\player_common.arc"
+[    1.695][t31345][*] Loading file: archives/player_knuckles.arc
+[    1.695][t31345][Game] Loading file: "game:\win32\archives\player_knuckles.arc"
+[    1.696][t31345][*] Loading file: archives/player_omega.arc
+[    1.696][t31345][Game] Loading file: "game:\win32\archives\player_omega.arc"
+[    1.697][t31345][*] Loading file: archives/player_princess.arc
+[    1.697][t31345][Game] Loading file: "game:\win32\archives\player_princess.arc"
+[    1.700][t31345][*] Loading file: archives/player_rouge.arc
+[    1.700][t31345][Game] Loading file: "game:\win32\archives\player_rouge.arc"
+[    1.704][t31345][*] Loading file: archives/player_shadow.arc
+[    1.704][t31345][Game] Loading file: "game:\win32\archives\player_shadow.arc"
+[    1.707][t31345][*] Loading file: archives/player_silver.arc
+[    1.707][t31345][Game] Loading file: "game:\win32\archives\player_silver.arc"
+[    1.709][t31345][*] Loading file: archives/player_sonic.arc
+[    1.709][t31345][Game] Loading file: "game:\win32\archives\player_sonic.arc"
+[    1.711][t31345][*] Loading file: archives/player_supershadow.arc
+[    1.711][t31345][Game] Loading file: "game:\win32\archives\player_supershadow.arc"
+[    1.712][t31345][*] Loading file: archives/player_supersilver.arc
+[    1.712][t31345][Game] Loading file: "game:\win32\archives\player_supersilver.arc"
+[    1.712][t31345][*] Loading file: archives/player_supersonic.arc
+[    1.713][t31345][Game] Loading file: "game:\win32\archives\player_supersonic.arc"
+[    1.715][t31345][*] Loading file: archives/player_tails.arc
+[    1.715][t31345][Game] Loading file: "game:\win32\archives\player_tails.arc"
+[    1.716][t31345][*] Loading file: archives/radarmap.arc
+[    1.717][t31345][Game] Loading file: "game:\win32\archives\radarmap.arc"
+[    1.718][t31345][*] Loading file: archives/sprite.arc
+[    1.718][t31345][*] Loading file: archives/stage_aqa_a.arc
+[    1.718][t31345][Game] Loading file: "game:\win32\archives\stage_aqa_a.arc"
+[    1.719][t31345][*] Loading file: archives/stage_aqa_b.arc
+[    1.719][t31345][Game] Loading file: "game:\win32\archives\stage_aqa_b.arc"
+[    1.723][t31345][*] Loading file: archives/stage_boss_dr1_dtd.arc
+[    1.723][t31345][Game] Loading file: "game:\win32\archives\stage_boss_dr1_dtd.arc"
+[    1.726][t31345][*] Loading file: archives/stage_boss_dr1_wap.arc
+[    1.726][t31345][Game] Loading file: "game:\win32\archives\stage_boss_dr1_wap.arc"
+[    1.728][t31345][*] Loading file: archives/stage_boss_dr2.arc
+[    1.728][t31345][Game] Loading file: "game:\win32\archives\stage_boss_dr2.arc"
+[    1.730][t31345][*] Loading file: archives/stage_boss_dr3.arc
+[    1.730][t31345][Game] Loading file: "game:\win32\archives\stage_boss_dr3.arc"
+[    1.733][t31345][*] Loading file: archives/stage_boss_iblis02.arc
+[    1.733][t31345][Game] Loading file: "game:\win32\archives\stage_boss_iblis02.arc"
+[    1.734][t31345][*] Loading file: archives/stage_boss_iblis03.arc
+[    1.734][t31345][Game] Loading file: "game:\win32\archives\stage_boss_iblis03.arc"
+[    1.736][t31345][*] Loading file: archives/stage_boss_mefi01.arc
+[    1.736][t31345][Game] Loading file: "game:\win32\archives\stage_boss_mefi01.arc"
+[    1.739][t31345][*] Loading file: archives/stage_boss_mefi02.arc
+[    1.739][t31345][Game] Loading file: "game:\win32\archives\stage_boss_mefi02.arc"
+[    1.740][t31345][*] Loading file: archives/stage_boss_rct.arc
+[    1.740][t31345][Game] Loading file: "game:\win32\archives\stage_boss_rct.arc"
+[    1.743][t31345][*] Loading file: archives/stage_boss_solaris.arc
+[    1.743][t31345][Game] Loading file: "game:\win32\archives\stage_boss_solaris.arc"
+[    1.744][t31345][*] Loading file: archives/stage_csc_a.arc
+[    1.744][t31345][Game] Loading file: "game:\win32\archives\stage_csc_a.arc"
+[    1.748][t31345][*] Loading file: archives/stage_csc_b.arc
+[    1.748][t31345][Game] Loading file: "game:\win32\archives\stage_csc_b.arc"
+[    1.751][t31345][*] Loading file: archives/stage_csc_c.arc
+[    1.751][t31345][Game] Loading file: "game:\win32\archives\stage_csc_c.arc"
+[    1.752][t31345][*] Loading file: archives/stage_csc_e.arc
+[    1.752][t31345][Game] Loading file: "game:\win32\archives\stage_csc_e.arc"
+[    1.753][t31345][*] Loading file: archives/stage_csc_f.arc
+[    1.753][t31345][Game] Loading file: "game:\win32\archives\stage_csc_f.arc"
+[    1.754][t31345][*] Loading file: archives/stage_csc_iblis01.arc
+[    1.754][t31345][Game] Loading file: "game:\win32\archives\stage_csc_iblis01.arc"
+[    1.755][t31345][*] Loading file: archives/stage_dtd_a.arc
+[    1.755][t31345][Game] Loading file: "game:\win32\archives\stage_dtd_a.arc"
+[    1.756][t31345][*] Loading file: archives/stage_dtd_b.arc
+[    1.756][t31345][Game] Loading file: "game:\win32\archives\stage_dtd_b.arc"
+[    1.757][t31345][*] Loading file: archives/stage_e0003.arc
+[    1.757][t31345][Game] Loading file: "game:\win32\archives\stage_e0003.arc"
+[    1.758][t31345][*] Loading file: archives/stage_e0009.arc
+[    1.758][t31345][Game] Loading file: "game:\win32\archives\stage_e0009.arc"
+[    1.758][t31345][*] Loading file: archives/stage_e0010.arc
+[    1.758][t31345][Game] Loading file: "game:\win32\archives\stage_e0010.arc"
+[    1.759][t31345][*] Loading file: archives/stage_e0012.arc
+[    1.759][t31345][Game] Loading file: "game:\win32\archives\stage_e0012.arc"
+[    1.760][t31345][*] Loading file: archives/stage_e0021.arc
+[    1.760][t31345][Game] Loading file: "game:\win32\archives\stage_e0021.arc"
+[    1.761][t31345][*] Loading file: archives/stage_e0022.arc
+[    1.761][t31345][Game] Loading file: "game:\win32\archives\stage_e0022.arc"
+[    1.763][t31345][*] Loading file: archives/stage_e0023.arc
+[    1.763][t31345][Game] Loading file: "game:\win32\archives\stage_e0023.arc"
+[    1.764][t31345][*] Loading file: archives/stage_e0026.arc
+[    1.764][t31345][Game] Loading file: "game:\win32\archives\stage_e0026.arc"
+[    1.766][t31345][*] Loading file: archives/stage_e0028.arc
+[    1.766][t31345][Game] Loading file: "game:\win32\archives\stage_e0028.arc"
+[    1.768][t31345][*] Loading file: archives/stage_e0031.arc
+[    1.768][t31345][Game] Loading file: "game:\win32\archives\stage_e0031.arc"
+[    1.771][t31345][*] Loading file: archives/stage_e0104.arc
+[    1.771][t31345][Game] Loading file: "game:\win32\archives\stage_e0104.arc"
+[    1.773][t31345][*] Loading file: archives/stage_e0105.arc
+[    1.773][t31345][Game] Loading file: "game:\win32\archives\stage_e0105.arc"
+[    1.775][t31345][*] Loading file: archives/stage_e0106.arc
+[    1.775][t31345][Game] Loading file: "game:\win32\archives\stage_e0106.arc"
+[    1.776][t31345][*] Loading file: archives/stage_e0120.arc
+[    1.776][t31345][Game] Loading file: "game:\win32\archives\stage_e0120.arc"
+[    1.778][t31345][*] Loading file: archives/stage_e0125.arc
+[    1.778][t31345][Game] Loading file: "game:\win32\archives\stage_e0125.arc"
+[    1.780][t31345][*] Loading file: archives/stage_e0206.arc
+[    1.780][t31345][Game] Loading file: "game:\win32\archives\stage_e0206.arc"
+[    1.781][t31345][*] Loading file: archives/stage_e0214.arc
+[    1.781][t31345][Game] Loading file: "game:\win32\archives\stage_e0214.arc"
+[    1.781][t31345][*] Loading file: archives/stage_e0216.arc
+[    1.781][t31345][Game] Loading file: "game:\win32\archives\stage_e0216.arc"
+[    1.783][t31345][*] Loading file: archives/stage_e0221.arc
+[    1.783][t31345][Game] Loading file: "game:\win32\archives\stage_e0221.arc"
+[    1.785][t31345][*] Loading file: archives/stage_e0304.arc
+[    1.785][t31345][Game] Loading file: "game:\win32\archives\stage_e0304.arc"
+[    1.787][t31345][*] Loading file: archives/stage_flc_a.arc
+[    1.787][t31345][Game] Loading file: "game:\win32\archives\stage_flc_a.arc"
+[    1.788][t31345][*] Loading file: archives/stage_flc_b.arc
+[    1.788][t31345][Game] Loading file: "game:\win32\archives\stage_flc_b.arc"
+[    1.790][t31345][*] Loading file: archives/stage_kdv_a.arc
+[    1.790][t31345][Game] Loading file: "game:\win32\archives\stage_kdv_a.arc"
+[    1.792][t31345][*] Loading file: archives/stage_kdv_b.arc
+[    1.792][t31345][Game] Loading file: "game:\win32\archives\stage_kdv_b.arc"
+[    1.794][t31345][*] Loading file: archives/stage_kdv_c.arc
+[    1.794][t31345][Game] Loading file: "game:\win32\archives\stage_kdv_c.arc"
+[    1.797][t31345][*] Loading file: archives/stage_kdv_d.arc
+[    1.797][t31345][Game] Loading file: "game:\win32\archives\stage_kdv_d.arc"
+[    1.798][t31345][*] Loading file: archives/stage_rct_a.arc
+[    1.798][t31345][Game] Loading file: "game:\win32\archives\stage_rct_a.arc"
+[    1.799][t31345][*] Loading file: archives/stage_rct_b.arc
+[    1.799][t31345][Game] Loading file: "game:\win32\archives\stage_rct_b.arc"
+[    1.800][t31345][*] Loading file: archives/stage_tpj_a.arc
+[    1.800][t31345][Game] Loading file: "game:\win32\archives\stage_tpj_a.arc"
+[    1.801][t31345][*] Loading file: archives/stage_tpj_b.arc
+[    1.801][t31345][Game] Loading file: "game:\win32\archives\stage_tpj_b.arc"
+[    1.802][t31345][*] Loading file: archives/stage_tpj_c.arc
+[    1.802][t31345][Game] Loading file: "game:\win32\archives\stage_tpj_c.arc"
+[    1.803][t31345][*] Loading file: archives/stage_twn_a.arc
+[    1.803][t31345][Game] Loading file: "game:\win32\archives\stage_twn_a.arc"
+[    1.805][t31345][*] Loading file: archives/stage_twn_b.arc
+[    1.805][t31345][Game] Loading file: "game:\win32\archives\stage_twn_b.arc"
+[    1.806][t31345][*] Loading file: archives/stage_twn_c.arc
+[    1.806][t31345][Game] Loading file: "game:\win32\archives\stage_twn_c.arc"
+[    1.807][t31345][*] Loading file: archives/stage_twn_d.arc
+[    1.807][t31345][Game] Loading file: "game:\win32\archives\stage_twn_d.arc"
+[    1.808][t31345][*] Loading file: archives/stage_wap_a.arc
+[    1.808][t31345][Game] Loading file: "game:\win32\archives\stage_wap_a.arc"
+[    1.809][t31345][*] Loading file: archives/stage_wap_b.arc
+[    1.809][t31345][Game] Loading file: "game:\win32\archives\stage_wap_b.arc"
+[    1.810][t31345][*] Loading file: archives/stage_wvo_a.arc
+[    1.810][t31345][Game] Loading file: "game:\win32\archives\stage_wvo_a.arc"
+[    1.814][t31345][*] Loading file: archives/stage_wvo_b.arc
+[    1.814][t31345][Game] Loading file: "game:\win32\archives\stage_wvo_b.arc"
+[    2.000][t31345][*] Loading file: 
+[    2.061][t31345][*] Loading file: text/fontmap.ftm
+[    2.065][t31345][*] Loading file: text/pf20_ff.pfi
+[    2.065][t31345][*] Loading file: text/picture.pft
+[    2.066][t31345][*] Loading file: text/fontpicture.dds
+[    2.068][t31345][*] Loading file: shader/primitive/font.fx
+[    2.068][t31345][*] Loading file: 
+[    2.075][t31345][*] Loading file: text/font2map.ftm
+[    2.075][t31345][*] Loading file: text/pf20_ff2.pfi
+[    2.076][t31345][*] Loading file: shader/primitive/font.fx
+[    2.076][t31345][*] Loading file: 
+[    2.081][t31345][*] Loading file: text/font3map.ftm
+[    2.081][t31345][*] Loading file: text/pf20_ff3.pfi
+[    2.082][t31345][*] Loading file: shader/primitive/font.fx
+[    2.085][t31345][*] Loading file: scripts/render/render_title.lua
+[    2.091][t31345][*] Loading file: scripts/stage/wvo/scene_wvo_a.lua
+[    2.094][t31345][*] Loading file: stage/wvo/a/wvo_envmap.dds
+[    2.138][t31345][*] Loading file: 
+[    2.139][t31345][*] Loading file: game:\common\sound\system.csb
+[    2.170][t31345][*] Loading file: 
+[    2.209][t31345][*] Loading file: shader/primitive/movieYUV420.fx
+[    2.213][t31345][Game] Loading file: "game:\xenon\sound\HD_SEGA.wmv"
+[    2.219][t31345][Game] Loading file: "game:\xenon\sound\HD_SEGA.wmv"
+[    2.221][t31345][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x827422F8, 0x207B820, 0x1 ABF3D617
+[    2.222][t31345][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x82742328, 0x207B820, 0x1 9F85F515
+[    2.222][t31345][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x82742358, 0x207B820, 0x1 DB89F569
+[    2.222][t31345][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x82742388, 0x207B820, 0x1 63308CB6
+[    2.252][t31345][*] Movie: sound\HD_SEGA.sfd - 1280x720
+[    3.520][t31465][sub_82744840] RenderFrame
+[    3.538][t31345][*] Loading file: sprite/title/title_English
+[    3.539][t31345][*] Loading file: sprite/title/title_logo.dds
+[    3.560][t31345][*] Loading file: sprite/title/title_tex_e_01.dds
+[    3.565][t31345][*] Loading file: sprite/title/title_text.dds
+[    3.566][t31345][*] CSD freed: 0x102108660
+[    3.566][t31345][*] CSD loaded: sprite/title/title_English (0x10207D2A0)
+[    3.566][t31345][*] CSD modifier(s) redirected: sprite/title/title
+[    3.567][t31345][*] Loading file: text/english/msg_system.e.mst
+[    3.584][t31345][*] Loading file: shader/primitive/movieYUV420.fx
+[    3.584][t31345][Game] Loading file: "game:\xenon\sound\title_loop_GBn.wmv"
+[    3.604][t31345][Game] Loading file: "game:\xenon\sound\title_loop_GBn.wmv"
+[    3.610][t31345][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x827422F8, 0x2083560, 0x1 4DF45034
+[    3.610][t31345][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x82742328, 0x2083560, 0x1 ABF3D617
+[    3.610][t31345][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x82742358, 0x2083560, 0x1 809851C
+[    3.611][t31345][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x82742388, 0x2083560, 0x1 29D306F1
+[    3.618][t31345][*] Movie: sound\title_loop_GBn.wmv - 1280x720
+[    5.669][t31461][heartbeat] alive: frame #202
+[    8.546][t31345][*] Loading file: text/english/msg_system.e.mst
+[    8.548][t31345][*] Loading file: sprite/windowtest
+[    8.549][t31345][*] Loading file: sprite/window.dds
+[    8.550][t31345][*] Loading file: sprite/maindisplay_pausemenu02.dds
+[    8.552][t31345][*] CSD freed: 0x108390860
+[    8.552][t31345][*] CSD loaded: sprite/windowtest (0x1080AA220)
+[    8.554][t31345][*] Loading file: sprite/windowtest
+[    8.554][t31345][*] Loading file: sprite/window.dds
+[    8.554][t31345][*] Loading file: sprite/maindisplay_pausemenu02.dds
+[    8.554][t31345][*] CSD freed: 0x1083A8860
+[    8.554][t31345][*] CSD loaded: sprite/windowtest (0x107E1D420)
+[    8.555][t31471][sub_82744840] RenderFrame
+[   10.669][t31461][heartbeat] alive: frame #496
+[   13.193][t31345][*] Saving achievements...
+[   13.196][t31345][ExCreateThread] 0x1000A0410, 0x0, 0x102087038, 0x826FE080, 0x825866A8, 0x2087020, 0x1 DA77C053
+[   13.196][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.197][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.197][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.198][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.198][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.198][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.199][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.199][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.199][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.199][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.200][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.200][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.200][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.201][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.201][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.201][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.201][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.202][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.202][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.202][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.203][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.203][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.203][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.204][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.204][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.204][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.205][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.205][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.205][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.206][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.206][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.206][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.206][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.207][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.207][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.207][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.208][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.208][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.208][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.208][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.208][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.209][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.209][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.209][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.209][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.210][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.210][t31784][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   13.210][t31345][*] Loading file: sprite/loading/loading_english
+[   13.214][t31345][*] CSD freed: 0x1020819E0
+[   13.214][t31345][*] CSD loaded: sprite/loading/loading_english (0x10207D2A0)
+[   13.214][t31345][*] CSD modifier(s) redirected: sprite/loading/loading
+[   13.215][t31345][ExCreateThread] 0x1000A0380, 0x0, 0x10207B838, 0x826FE080, 0x825866A8, 0x207B820, 0x1 DA77C053
+[   13.244][t31345][*] Loading file: text/english/msg_mainmenu.e.mst
+[   13.248][t31345][*] Loading file: text/english/msg_system.e.mst
+[   13.248][t31345][*] Loading file: text/english/msg_gold_results.e.mst
+[   13.249][t31345][*] Loading file: text/english/msg_town_mission_sonic.e.mst
+[   13.252][t31345][*] Loading file: text/english/msg_town_mission_shadow.e.mst
+[   13.254][t31345][*] Loading file: text/english/msg_town_mission_silver.e.mst
+[   13.257][t31345][*] Loading file: sprite/loading/loading_english
+[   13.259][t31345][*] CSD freed: 0x1042BC9E0
+[   13.259][t31345][*] CSD loaded: sprite/loading/loading_english (0x1042BC860)
+[   13.259][t31345][*] CSD modifier(s) redirected: sprite/loading/loading
+[   13.259][t31345][ExCreateThread] 0x10009FE80, 0x0, 0x1042BD6B8, 0x826FE080, 0x825866A8, 0x42BD6A0, 0x1 DA77C053
+[   13.259][t31345][*] Loading file: text/english/msg_mainmenu.e.mst
+[   13.259][t31345][*] Loading file: text/english/msg_system.e.mst
+[   13.259][t31345][*] Loading file: text/english/msg_gold_results.e.mst
+[   13.260][t31345][*] Loading file: text/english/msg_options.e.mst
+[   13.261][t31345][*] Loading file: text/english/msg_mainmenu.e.mst
+[   13.261][t31345][*] Loading file: text/english/msg_system.e.mst
+[   13.261][t31345][*] Loading file: text/english/msg_gold_results.e.mst
+[   13.262][t31345][*] Loading file: text/english/msg_town_mission_sonic.e.mst
+[   13.262][t31345][*] Loading file: text/english/msg_town_mission_shadow.e.mst
+[   13.262][t31345][*] Loading file: text/english/msg_town_mission_silver.e.mst
+[   13.262][t31345][*] Loading file: sprite/main_menu
+[   13.267][t31345][*] Loading file: 
+[   13.276][t31345][*] Loading file: sprite/main_menu1.dds
+[   13.295][t31345][*] Loading file: sprite/main_menu2.dds
+[   13.306][t31345][*] Loading file: sprite/maindisplay_charactericon.dds
+[   13.309][t31345][*] Loading file: sprite/maindisplay_pausemenu02.dds
+[   13.311][t31345][*] Loading file: sprite/plate_1.dds
+[   13.327][t31345][*] Loading file: sprite/new_text.dds
+[   13.329][t31345][*] CSD freed: 0x10441F1E0
+[   13.329][t31345][*] CSD loaded: sprite/main_menu (0x1042BE1E0)
+[   13.329][t31345][*] Loading file: sprite/main_menu
+[   13.330][t31345][*] Loading file: 
+[   13.330][t31345][*] Loading file: sprite/main_menu1.dds
+[   13.330][t31345][*] Loading file: sprite/main_menu2.dds
+[   13.330][t31345][*] Loading file: sprite/maindisplay_charactericon.dds
+[   13.330][t31345][*] Loading file: sprite/maindisplay_pausemenu02.dds
+[   13.330][t31345][*] Loading file: sprite/plate_1.dds
+[   13.330][t31345][*] Loading file: sprite/new_text.dds
+[   13.330][t31345][*] CSD freed: 0x10441F1E0
+[   13.330][t31345][*] CSD loaded: sprite/main_menu (0x1042C5FA0)
+[   13.331][t31345][*] Loading file: sprite/main_menu
+[   13.332][t31345][*] Loading file: 
+[   13.332][t31345][*] Loading file: sprite/main_menu1.dds
+[   13.332][t31345][*] Loading file: sprite/main_menu2.dds
+[   13.332][t31345][*] Loading file: sprite/maindisplay_charactericon.dds
+[   13.333][t31345][*] Loading file: sprite/maindisplay_pausemenu02.dds
+[   13.333][t31345][*] Loading file: sprite/plate_1.dds
+[   13.333][t31345][*] Loading file: sprite/new_text.dds
+[   13.333][t31345][*] CSD freed: 0x10441F1E0
+[   13.333][t31345][*] CSD loaded: sprite/main_menu (0x1042C7160)
+[   13.333][t31345][*] Loading file: text/english/msg_mainmenu.e.mst
+[   13.333][t31345][*] Loading file: text/english/msg_system.e.mst
+[   13.336][t31345][*] Loading file: 
+[   13.337][t31345][*] Loading file: sprite/main_menu7.dds
+[   13.357][t31345][*] Loading file: sprite/main_menu8.dds
+[   13.359][t31345][*] Loading file: sprite/main_menu9.dds
+[   13.374][t31345][*] Loading file: sprite/maindisplay_pausemenu02.dds
+[   13.374][t31345][*] CSD freed: 0x1042DF1E0
+[   13.374][t31345][*] CSD loaded:  (0x1042C9C60)
+[   13.374][t31345][*] Loading file: text/english/msg_options.e.mst
+[   13.374][t31345][*] Loading file: text/english/msg_audioroom.e.mst
+[   13.374][t31345][*] Loading file: text/english/msg_mainmenu.e.mst
+[   13.374][t31345][*] Loading file: text/english/msg_system.e.mst
+[   13.374][t31345][*] Loading file: text/english/msg_gold_results.e.mst
+[   13.374][t31345][*] Loading file: text/english/msg_town_mission_sonic.e.mst
+[   13.374][t31345][*] Loading file: text/english/msg_town_mission_shadow.e.mst
+[   13.374][t31345][*] Loading file: text/english/msg_town_mission_silver.e.mst
+[   13.374][t31345][*] Loading file: sprite/ranking/ranking
+[   13.375][t31345][*] Loading file: text/english/msg_system.e.mst
+[   13.376][t31345][*] Loading file: text/english/msg_mainmenu.e.mst
+[   13.376][t31345][*] Loading file: text/english/msg_system.e.mst
+[   13.376][t31345][*] Loading file: text/english/msg_gold_results.e.mst
+[   13.376][t31345][*] Loading file: text/english/msg_town_mission_sonic.e.mst
+[   13.376][t31345][*] Loading file: text/english/msg_town_mission_shadow.e.mst
+[   13.376][t31345][*] Loading file: text/english/msg_town_mission_silver.e.mst
+[   13.376][t31345][*] Loading file: sprite/goldmedal/goldmedal
+[   13.377][t31345][*] Loading file: sprite/goldmedal/goldmedal01.dds
+[   13.378][t31345][*] Loading file: sprite/goldmedal/goldmedal02.dds
+[   13.388][t31345][*] Loading file: sprite/goldmedal/main_menu1.dds
+[   13.388][t31345][*] Loading file: sprite/goldmedal/maindisplay_pausemenu02.dds
+[   13.388][t31345][*] CSD freed: 0x1042E8460
+[   13.388][t31345][*] CSD loaded: sprite/goldmedal/goldmedal (0x1042E82E0)
+[   13.389][t31345][*] Loading file: text/english/msg_mainmenu.e.mst
+[   13.389][t31345][*] Loading file: text/english/msg_system.e.mst
+[   13.390][t31345][*] Loading file: text/english/msg_gold_results.e.mst
+[   13.390][t31345][*] Loading file: text/english/msg_town_mission_sonic.e.mst
+[   13.390][t31345][*] Loading file: text/english/msg_town_mission_shadow.e.mst
+[   13.390][t31345][*] Loading file: text/english/msg_town_mission_silver.e.mst
+[   13.390][t31345][*] Loading file: sprite/tag_character/tag_character
+[   13.391][t31345][*] Loading file: sprite/tag_character/tag_character01.dds
+[   13.395][t31345][*] Loading file: sprite/tag_character/tag_character02.dds
+[   13.397][t31345][*] Loading file: sprite/tag_character/main_menu1.dds
+[   13.397][t31345][*] Loading file: sprite/tag_character/maindisplay_pausemenu02.dds
+[   13.397][t31345][*] Loading file: sprite/tag_character/main_menu6.dds
+[   13.405][t31345][*] CSD freed: 0x1042E8460
+[   13.405][t31345][*] CSD loaded: sprite/tag_character/tag_character (0x1042F92E0)
+[   13.406][t31345][*] Loading file: text/english/msg_mainmenu.e.mst
+[   13.406][t31345][*] Loading file: shader/primitive/csdBG.fx
+[   13.406][t31345][*] Loading file: sprite/background/background
+[   13.408][t31345][*] Loading file: sprite/background/back01.dds
+[   13.411][t31345][*] Loading file: sprite/background/back02.dds
+[   13.421][t31345][*] Loading file: sprite/background/back03.dds
+[   13.426][t31345][*] Loading file: sprite/background/back04.dds
+[   13.431][t31345][*] Loading file: sprite/background/back05.dds
+[   13.440][t31345][*] Loading file: sprite/background/back06.dds
+[   13.442][t31345][*] CSD freed: 0x1042ECC60
+[   13.443][t31345][*] CSD loaded: sprite/background/background (0x1042FEFA0)
+[   13.443][t31345][*] Loading file: sprite/button_window/button_window
+[   13.445][t31345][*] Loading file: sprite/button_window/button_winidow.dds
+[   13.446][t31345][*] CSD freed: 0x1042F59E0
+[   13.446][t31345][*] CSD loaded: sprite/button_window/button_window (0x1042F58E0)
+[   13.446][t31345][*] Loading file: text/english/msg_system.e.mst
+[   13.450][t31345][*] Loading file: player/select_sonic.lua
+[   13.453][t31345][*] Loading file: player/select_sonic.pkg
+[   13.454][t31345][*] Loading file: player/sonic_new/sonic_Head01.xno
+[   13.464][t31345][*] Loading file: player/sonic_new/ch_sonic_tex01_df.dds
+[   13.479][t31345][*] Loading file: player/sonic_new/ch_sonic_tex01_sp.dds
+[   13.488][t31345][*] Loading file: player/sonic_new/ch_sonic_tex01_nw.dds
+[   13.508][t31345][*] Loading file: player/sonic_new/ch_sonic_tex04_df.dds
+[   13.509][t31345][*] Loading file: player/sonic_new/ch_sonic_tex04_sp.dds
+[   13.510][t31345][*] Loading file: player/sonic_new/ch_sonic_tex04_nw.dds
+[   13.517][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.518][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.520][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.521][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.522][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.523][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.524][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.525][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.526][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.526][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.526][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.526][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.526][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.526][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.526][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.526][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.526][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.527][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.527][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.527][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.527][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.527][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.527][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.527][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.527][t31345][*] Loading file: player/sonic_new/sonic_Root.xno
+[   13.535][t31345][*] Loading file: player/sonic_new/ch_sonic_tex01_df.dds
+[   13.535][t31345][*] Loading file: player/sonic_new/ch_sonic_tex01_sp.dds
+[   13.535][t31345][*] Loading file: player/sonic_new/ch_sonic_tex01_nw.dds
+[   13.535][t31345][*] Loading file: player/sonic_new/ch_sonic_tex03_rf.dds
+[   13.538][t31345][*] Loading file: player/sonic_new/ch_sonic_tex02_df.dds
+[   13.539][t31345][*] Loading file: player/sonic_new/ch_sonic_tex02_sp.dds
+[   13.544][t31345][*] Loading file: player/sonic_new/ch_sonic_tex02_nw.dds
+[   13.565][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.565][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.566][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.567][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.567][t31345][*] Loading file: player/sonic_new/so_goal02_l_Root.xnm
+[   13.574][t31345][*] Loading file: player/sonic_new/so_goal02_s_Root.xnm
+[   13.579][t31345][*] Loading file: player/sonic_new/so_stand01_l.xnm
+[   13.583][t31345][*] Loading file: player/select_sonic.animation.lua
+[   13.585][t31345][ExCreateThread] 0x10009F390, 0x0, 0x1048B99F8, 0x826FE080, 0x825866A8, 0x48B99E0, 0x1 D9A3D5CA
+[   13.591][t31345][*] Loading file: player/select_shadow.lua
+[   13.593][t31345][*] Loading file: player/select_shadow.pkg
+[   13.593][t31345][*] Loading file: player/shadow/shadow_Head01.xno
+[   13.596][t31345][*] Loading file: player/shadow/ch_shadow_tex04b_df.dds
+[   13.598][t31345][*] Loading file: player/shadow/ch_shadow_tex04b_sp.dds
+[   13.599][t31345][*] Loading file: player/shadow/ch_shadow_tex04b_nw.dds
+[   13.602][t31345][*] Loading file: player/shadow/ch_shadow_tex01_df.dds
+[   13.607][t31345][*] Loading file: player/shadow/ch_shadow_tex01_sp.dds
+[   13.615][t31345][*] Loading file: player/shadow/ch_shadow_tex01_nw.dds
+[   13.634][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.634][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.635][t31345][*] Loading file: player/shadow/shadow_Root.xno
+[   13.645][t31345][*] Loading file: player/shadow/ch_shadow_tex01_df.dds
+[   13.645][t31345][*] Loading file: player/shadow/ch_shadow_tex01_sp.dds
+[   13.645][t31345][*] Loading file: player/shadow/ch_shadow_tex01_nw.dds
+[   13.645][t31345][*] Loading file: player/shadow/ch_shadow_tex03_rf.dds
+[   13.648][t31345][*] Loading file: player/shadow/ch_shadow_tex02_df.dds
+[   13.651][t31345][*] Loading file: player/shadow/ch_shadow_tex02_sp.dds
+[   13.657][t31345][*] Loading file: player/shadow/ch_shadow_tex02_nw.dds
+[   13.676][t31345][*] Loading file: player/shadow/ch_shadow_tex01_df.dds
+[   13.676][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.676][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.676][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.676][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.676][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.676][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.676][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.676][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.676][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.676][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.677][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.678][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.679][t31345][*] Loading file: player/shadow/sh_item_l.xnm
+[   13.684][t31345][*] Loading file: player/shadow/sh_item_s.xnm
+[   13.689][t31345][*] Loading file: player/shadow/sh_stand01_l.xnm
+[   13.693][t31345][*] Loading file: player/select_shadow.animation.lua
+[   13.693][t31345][ExCreateThread] 0x10009F390, 0x0, 0x1048B96F8, 0x826FE080, 0x825866A8, 0x48B96E0, 0x1 ABCFB654
+[   13.695][t31345][*] Loading file: player/select_silver.lua
+[   13.696][t31345][*] Loading file: player/select_silver.pkg
+[   13.696][t31345][*] Loading file: player/silver/silver_Head01.xno
+[   13.700][t31345][*] Loading file: player/silver/ch_silver_tex01_df.dds
+[   13.709][t31345][*] Loading file: player/silver/ch_silver_tex01_sp.dds
+[   13.718][t31345][*] Loading file: player/silver/ch_silver_tex01_nw.dds
+[   13.737][t31345][*] Loading file: player/silver/ch_silver_tex04b_df.dds
+[   13.739][t31345][*] Loading file: player/silver/ch_silver_tex04b_sp.dds
+[   13.740][t31345][*] Loading file: player/silver/ch_silver_tex04b_nw.dds
+[   13.745][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.745][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.745][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.745][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.745][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.745][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.745][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.745][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.745][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.745][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.746][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.747][t31345][*] Loading file: player/silver/silver_Root.xno
+[   13.760][t31345][*] Loading file: player/silver/ch_silver_tex01_df.dds
+[   13.760][t31345][*] Loading file: player/silver/ch_silver_tex01_sp.dds
+[   13.760][t31345][*] Loading file: player/silver/ch_silver_tex01_nw.dds
+[   13.760][t31345][*] Loading file: player/silver/ch_silver_tex03_rf.dds
+[   13.763][t31345][*] Loading file: player/silver/ch_silver_tex02_df.dds
+[   13.766][t31345][*] Loading file: player/silver/ch_silver_tex02_sp.dds
+[   13.768][t31345][*] Loading file: player/silver/ch_silver_tex02_nw.dds
+[   13.789][t31345][*] Loading file: player/silver/ch_silver_tex05_rf.dds
+[   13.790][t31345][*] Loading file: player/silver/ch_silver_tex05_lu.dds
+[   13.792][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.792][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.793][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.793][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.793][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.793][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.793][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.793][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.793][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.793][t31345][*] Loading file: shader/std/Luminous03.fxo
+[   13.793][t31345][*] Loading file: shader/skin/Luminous03.fxo
+[   13.793][t31345][*] Loading file: shader/morph/Luminous03.fxo
+[   13.794][t31345][*] Loading file: shader/np/Luminous03.fxo
+[   13.794][t31345][*] Loading file: shader/skin_np/Luminous03.fxo
+[   13.794][t31345][*] Loading file: shader/morph_np/Luminous03.fxo
+[   13.795][t31345][*] Loading file: shader/lm/Luminous03.fxo
+[   13.795][t31345][*] Loading file: shader/lm_np/Luminous03.fxo
+[   13.795][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.795][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.795][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.795][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.795][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.795][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.795][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.795][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.796][t31345][*] Loading file: shader/std/CharacterMaterial.fxo
+[   13.796][t31345][*] Loading file: shader/skin/CharacterMaterial.fxo
+[   13.796][t31345][*] Loading file: shader/morph/CharacterMaterial.fxo
+[   13.796][t31345][*] Loading file: shader/np/CharacterMaterial.fxo
+[   13.796][t31345][*] Loading file: shader/skin_np/CharacterMaterial.fxo
+[   13.796][t31345][*] Loading file: shader/morph_np/CharacterMaterial.fxo
+[   13.796][t31345][*] Loading file: shader/lm/CharacterMaterial.fxo
+[   13.796][t31345][*] Loading file: shader/lm_np/CharacterMaterial.fxo
+[   13.796][t31345][*] Loading file: player/silver/sv_select_l.xnm
+[   13.801][t31345][*] Loading file: player/silver/sv_select_s.xnm
+[   13.805][t31345][*] Loading file: player/silver/sv_stand01_l.xnm
+[   13.808][t31345][*] Loading file: player/select_silver.animation.lua
+[   13.808][t31345][ExCreateThread] 0x10009F390, 0x0, 0x1048B8AB8, 0x826FE080, 0x825866A8, 0x48B8AA0, 0x1 BCFEB793
+[   15.670][t31461][heartbeat] alive: frame #661
+[   18.671][t31461][watchdog] HANG DETECTED: no frame presented for 5.2s (last frame #661 at +13.465s). Thread dump follows:
+[   18.671][t31461][watchdog] tid 31279 [SDLActivity] state=S wchan=do_epoll_wait
+[   18.671][t31461][watchdog] tid 31280 [Signal Catcher] state=S wchan=do_sigtimedwait
+[   18.671][t31461][watchdog] tid 31281 [perfetto_hprof_] state=S wchan=pipe_read
+[   18.672][t31461][watchdog] tid 31282 [ADB-JDWP Connec] state=S wchan=do_sys_poll
+[   18.672][t31461][watchdog] tid 31283 [Jit thread pool] state=S wchan=futex_wait_queue_me
+[   18.672][t31461][watchdog] tid 31284 [HeapTaskDaemon] state=S wchan=futex_wait_queue_me
+[   18.672][t31461][watchdog] tid 31285 [ReferenceQueueD] state=S wchan=futex_wait_queue_me
+[   18.672][t31461][watchdog] tid 31286 [FinalizerDaemon] state=S wchan=futex_wait_queue_me
+[   18.672][t31461][watchdog] tid 31287 [FinalizerWatchd] state=S wchan=futex_wait_queue_me
+[   18.672][t31461][watchdog] tid 31288 [binder:31279_1] state=S wchan=binder_wait_for_work
+[   18.672][t31461][watchdog] tid 31289 [binder:31279_2] state=S wchan=binder_wait_for_work
+[   18.672][t31461][watchdog] tid 31293 [binder:31279_3] state=S wchan=binder_wait_for_work
+[   18.672][t31461][watchdog] tid 31295 [Profile Saver] state=S wchan=futex_wait_queue_me
+[   18.672][t31461][watchdog] tid 31296 [RenderThread] state=S wchan=do_epoll_wait
+[   18.672][t31461][watchdog] tid 31300 [mali-mem-purge] state=S wchan=futex_wait_queue_me
+[   18.672][t31461][watchdog] tid 31301 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.672][t31461][watchdog] tid 31302 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.672][t31461][watchdog] tid 31303 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31304 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31305 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31306 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31307 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31308 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31309 [mali-cmar-backe] state=S wchan=do_sys_poll
+[   18.673][t31461][watchdog] tid 31315 [OkHttp Connecti] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31316 [queued-work-loo] state=S wchan=do_epoll_wait
+[   18.673][t31461][watchdog] tid 31317 [ConscryptStatsL] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31318 [ConscryptStatsL] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31319 [ConscryptStatsL] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31321 [SurfaceSyncGrou] state=S wchan=do_epoll_wait
+[   18.673][t31461][watchdog] tid 31322 [hwuiTask0] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31323 [hwuiTask1] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31324 [HWC release] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31326 [Okio Watchdog] state=S wchan=futex_wait_queue_me
+[   18.673][t31461][watchdog] tid 31328 [RenderThread] state=S wchan=futex_wait_queue_me
+[   18.674][t31461][watchdog] tid 31329 [GPU completion] state=S wchan=futex_wait_queue_me
+[   18.674][t31461][watchdog] tid 31332 [binder:31279_1] state=S wchan=futex_wait_queue_me
+[   18.674][t31461][watchdog] tid 31335 [binder:31279_4] state=S wchan=binder_wait_for_work
+[   18.674][t31461][watchdog] tid 31338 [SDLActivity] state=S wchan=futex_wait_queue_me
+[   18.674][t31461][watchdog] tid 31344 [AudioPortEventH] state=S wchan=do_epoll_wait
+[   18.674][t31461][watchdog] tid 31345 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.674][t31461][watchdog] tid 31346 [binder:31279_5] state=S wchan=binder_wait_for_work
+[   18.674][t31461][watchdog] tid 31347 [SDLThread] state=S wchan=pipe_read
+[   18.674][t31461][watchdog] tid 31390 [SDLThread] state=S wchan=__arm64_sys_nanosleep
+[   18.674][t31461][watchdog] tid 31391 [AudioTrack] state=S wchan=futex_wait_queue_me
+[   18.674][t31461][watchdog] tid 31395 [SDLAudioP2] state=S wchan=futex_wait_queue_me
+[   18.674][t31461][watchdog] tid 31406 [InsetsAnimation] state=S wchan=do_epoll_wait
+[   18.674][t31461][watchdog] tid 31407 [InteractionJank] state=S wchan=do_epoll_wait
+[   18.674][t31461][watchdog] tid 31417 [mali-mem-purge] state=S wchan=futex_wait_queue_me
+[   18.674][t31461][watchdog] tid 31418 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.674][t31461][watchdog] tid 31419 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31420 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31421 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31422 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31423 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31424 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31425 [mali-utility-wo] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31426 [mali-cmar-backe] state=S wchan=do_sys_poll
+[   18.675][t31461][watchdog] tid 31440 [SDLThread] state=R wchan=0
+[   18.675][t31461][watchdog] tid 31441 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31442 [SDLThread] state=S wchan=__arm64_sys_nanosleep
+[   18.675][t31461][watchdog] tid 31443 [SDLThread] state=S wchan=__arm64_sys_nanosleep
+[   18.675][t31461][watchdog] tid 31444 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31445 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31446 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.675][t31461][watchdog] tid 31447 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31448 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31449 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31450 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31451 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31452 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31453 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31454 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31455 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31456 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31457 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31458 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31459 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31461 [SDLThread] state=R wchan=0
+[   18.676][t31461][watchdog] tid 31786 [SDLThread] state=S wchan=do_sys_poll
+[   18.676][t31461][watchdog] tid 31788 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31789 [SDLThread] state=S wchan=futex_wait_queue_me
+[   18.676][t31461][watchdog] tid 31791 [SDLThread] state=S wchan=futex_wait_queue_me
+[   24.946][t31279][*] Saving configuration...

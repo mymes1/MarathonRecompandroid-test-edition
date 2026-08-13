@@ -1615,10 +1615,31 @@ enum class CsdFilterState
 
 static CsdFilterState g_csdFilterState;
 
+struct MaliTextureUploadSlice
+{
+    uint32_t mipLevel;
+    uint32_t arrayLayer;
+    uint32_t width;
+    uint32_t height;
+    uint32_t depth;
+    uint32_t rowWidth;
+    uint64_t bufferOffset;
+};
+
+struct MaliTextureUpload
+{
+    std::unique_ptr<RenderBuffer> buffer;
+    GuestTexture* texture;
+    RenderFormat format;
+    std::vector<MaliTextureUploadSlice> slices;
+    std::atomic<bool>* completion;
+};
+
 enum class RenderCommandType
 {
     SetRenderState,
     DestructResource,
+    UploadTexture,
     UnlockTextureRect,
     UnlockBuffer16,
     UnlockBuffer32,
@@ -1665,6 +1686,11 @@ struct RenderCommand
         {
             GuestResource* resource;
         } destructResource;
+
+        struct
+        {
+            MaliTextureUpload* upload;
+        } uploadTexture;
 
         struct
         {
@@ -2325,12 +2351,9 @@ static void ExecuteCopyCommandList(const T& function)
     // recording the current frame: the two command buffers could then encode
     // conflicting oldLayout values and queue submission order would no longer
     // match the layout state observed while recording.
-    const auto currentThreadId = std::this_thread::get_id();
-    const bool isPresentCapableThread = currentThreadId == g_presentThreadId;
     if (g_isMali &&
         g_graphicsCommandListOpen.load(std::memory_order_acquire) &&
-        currentThreadId != g_renderThreadId &&
-        !isPresentCapableThread)
+        std::this_thread::get_id() != g_renderThreadId)
     {
         std::unique_lock stateLock(g_graphicsCommandStateMutex);
         g_graphicsCommandListClosed.wait(stateLock, []
@@ -2339,15 +2362,11 @@ static void ExecuteCopyCommandList(const T& function)
         });
     }
 
-    // Never append a loader upload to an open frame command buffer. On Mali
+    // Never append a loader upload to an open frame command buffer.  On Mali
     // the copy queue aliases the graphics queue, so this submission is ordered
     // on that queue and the fence makes the texture safe before its descriptor
-    // is exposed to guest rendering. The present-capable guest thread is the
-    // one exception: it may be loading a texture before its first Present, and
-    // waiting for the open list here would deadlock because that same thread
-    // is the only one that can enqueue the Present that closes the list. The
-    // copy submission is placed before the later frame submission on the
-    // shared queue and is completed before this function returns.
+    // is exposed to guest rendering.  This also keeps render-thread and loader-
+    // thread recording from sharing a VkCommandBuffer.
     g_copyCommandList->begin();
     RenderCommandList* previousCommandList = g_activeCopyCommandList;
     g_activeCopyCommandList = g_copyCommandList.get();
@@ -2438,7 +2457,6 @@ static void CreateImGuiBackend()
     uint32_t slicePitch = (rowPitch * height + g_uploadPlacementAlignment - 1) & ~(g_uploadPlacementAlignment - 1);
     auto uploadBuffer = g_device->createBuffer(RenderBufferDesc::UploadBuffer(slicePitch));
     uint8_t* mappedMemory = reinterpret_cast<uint8_t*>(uploadBuffer->map());
-
     if (rowPitch == (width * 4))
     {
         // The allocation may include placement padding; copy only the actual
@@ -3613,6 +3631,62 @@ static void UnlockTextureRect(GuestTexture* texture)
         completion.wait(false, std::memory_order_acquire);
 }
 
+static void QueueMaliTextureUpload(
+    std::unique_ptr<RenderBuffer> buffer,
+    GuestTexture* texture,
+    RenderFormat format,
+    std::vector<MaliTextureUploadSlice> slices)
+{
+    std::atomic<bool> completion{false};
+    auto upload = std::make_unique<MaliTextureUpload>();
+    upload->buffer = std::move(buffer);
+    upload->texture = texture;
+    upload->format = format;
+    upload->slices = std::move(slices);
+    upload->completion = &completion;
+
+    RenderCommand cmd;
+    cmd.type = RenderCommandType::UploadTexture;
+    cmd.uploadTexture.upload = upload.release();
+    g_renderQueue.enqueue(cmd);
+
+    // The render thread owns command-list recording. Waiting here only means
+    // that the copy has been recorded into the current graphics list; it does
+    // not wait for the guest thread to submit that list, so a present-capable
+    // guest thread cannot deadlock waiting for its own Present.
+    completion.wait(false, std::memory_order_acquire);
+}
+
+static void ProcUploadTexture(const RenderCommand& cmd)
+{
+    std::unique_ptr<MaliTextureUpload> upload(cmd.uploadTexture.upload);
+
+    AddBarrier(upload->texture, RenderTextureLayout::COPY_DEST);
+    FlushBarriers();
+
+    for (const auto& slice : upload->slices)
+    {
+        g_commandLists[g_frame]->copyTextureRegion(
+            RenderTextureCopyLocation::Subresource(
+                upload->texture->texture, slice.mipLevel, slice.arrayLayer),
+            RenderTextureCopyLocation::PlacedFootprint(
+                upload->buffer.get(), upload->format, slice.width, slice.height,
+                slice.depth, slice.rowWidth, slice.bufferOffset));
+    }
+
+    g_commandLists[g_frame]->barriers(RenderBarrierStage::GRAPHICS,
+        RenderTextureBarrier(upload->texture->texture, RenderTextureLayout::SHADER_READ));
+    upload->texture->layout = RenderTextureLayout::SHADER_READ;
+
+    // The command buffer only stores the upload buffer reference. Retain it
+    // with the frame until its fence is complete, then DestructTempResources
+    // can safely release it.
+    g_tempBuffers[g_frame].emplace_back(std::move(upload->buffer));
+
+    upload->completion->store(true, std::memory_order_release);
+    upload->completion->notify_one();
+}
+
 static void ProcUnlockTextureRect(const RenderCommand& cmd)
 {
     const auto& args = cmd.unlockTextureRect;
@@ -3703,7 +3777,6 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
         copyBuffer(reinterpret_cast<T*>(uploadBuffer->map()));
         uploadBuffer->flushMappedRange(0, buffer->dataSize);
         uploadBuffer->unmap();
-
         // A vertex/index upload must be visible to the graphics queue before
         // the next draw.  The copy queue path is only safe when the destination
         // buffer lives in the host-visible device-local upload heap: in that
@@ -7386,6 +7459,7 @@ static std::thread g_renderThread([]
                 {
                 case RenderCommandType::SetRenderState:                    ProcSetRenderState(cmd); break;
                 case RenderCommandType::DestructResource:                  ProcDestructResource(cmd); break;
+                case RenderCommandType::UploadTexture:                     ProcUploadTexture(cmd); break;
                 case RenderCommandType::UnlockTextureRect:                 ProcUnlockTextureRect(cmd); break;
                 case RenderCommandType::UnlockBuffer16:                    ProcUnlockBuffer16(cmd); break;
                 case RenderCommandType::UnlockBuffer32:                    ProcUnlockBuffer32(cmd); break;
@@ -8129,7 +8203,30 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
         uploadBuffer->flushMappedRange(0, curDstOffset);
         uploadBuffer->unmap();
 
-        ExecuteCopyCommandList([&]
+        if (g_isMali)
+        {
+            std::vector<MaliTextureUploadSlice> uploadSlices;
+            uploadSlices.reserve(slices.size());
+            for (size_t i = 0; i < slices.size(); i++)
+            {
+                const auto& slice = slices[i];
+                uploadSlices.push_back({
+                    uint32_t(i % desc.mipLevels),
+                    uint32_t(i / desc.mipLevels),
+                    slice.width,
+                    slice.height,
+                    slice.depth,
+                    (slice.dstRowPitch / RenderFormatSize(uploadFormat)) * RenderFormatBlockWidth(uploadFormat),
+                    slice.dstOffset
+                });
+            }
+            QueueMaliTextureUpload(
+                std::move(uploadBuffer), &texture, uploadFormat,
+                std::move(uploadSlices));
+        }
+        else
+        {
+            ExecuteCopyCommandList([&]
                 {
                     ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
 
@@ -8137,8 +8234,6 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                 // BC data was decoded or transcoded.  The copy footprint must
                 // describe that representation, not the destination image's
                 // original BC format, or Vulkan computes the wrong row stride.
-                const RenderFormat uploadFormat =
-                    bcFallback.mode == BCnFallbackMode::None ? desc.format : bcFallback.targetFormat;
                 const uint32_t uploadBytesPerBlock = RenderFormatSize(uploadFormat);
                 const uint32_t uploadBlockWidth = RenderFormatBlockWidth(uploadFormat);
 
@@ -8158,7 +8253,8 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
                 }
                 ActiveCopyCommandList()->barriers(RenderBarrierStage::GRAPHICS,
                     RenderTextureBarrier(texture.texture, RenderTextureLayout::SHADER_READ));
-            });
+                });
+        }
         texture.layout = RenderTextureLayout::SHADER_READ;
 
         return true;
@@ -8205,16 +8301,30 @@ static bool LoadTexture(GuestTexture& texture, const uint8_t* data, size_t dataS
 
             stbi_image_free(stbImage);
 
-            ExecuteCopyCommandList([&]
-                {
-                    ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
-
-                    ActiveCopyCommandList()->copyTextureRegion(
-                        RenderTextureCopyLocation::Subresource(texture.texture, 0),
-                        RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
-                    ActiveCopyCommandList()->barriers(RenderBarrierStage::GRAPHICS,
-                        RenderTextureBarrier(texture.texture, RenderTextureLayout::SHADER_READ));
+            if (g_isMali)
+            {
+                std::vector<MaliTextureUploadSlice> uploadSlices;
+                uploadSlices.push_back({
+                    0, 0, uint32_t(width), uint32_t(height), 1,
+                    rowPitch / 4, 0
                 });
+                QueueMaliTextureUpload(
+                    std::move(uploadBuffer), &texture,
+                    RenderFormat::R8G8B8A8_UNORM, std::move(uploadSlices));
+            }
+            else
+            {
+                ExecuteCopyCommandList([&]
+                    {
+                        ActiveCopyCommandList()->barriers(RenderBarrierStage::COPY, RenderTextureBarrier(texture.texture, RenderTextureLayout::COPY_DEST));
+
+                        ActiveCopyCommandList()->copyTextureRegion(
+                            RenderTextureCopyLocation::Subresource(texture.texture, 0),
+                            RenderTextureCopyLocation::PlacedFootprint(uploadBuffer.get(), RenderFormat::R8G8B8A8_UNORM, width, height, 1, rowPitch / 4, 0));
+                        ActiveCopyCommandList()->barriers(RenderBarrierStage::GRAPHICS,
+                            RenderTextureBarrier(texture.texture, RenderTextureLayout::SHADER_READ));
+                    });
+            }
             texture.layout = RenderTextureLayout::SHADER_READ;
             return true;
         }
