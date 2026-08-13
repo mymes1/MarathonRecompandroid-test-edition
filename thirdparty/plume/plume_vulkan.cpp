@@ -698,7 +698,6 @@ namespace plume {
 
         if (stages & RenderBarrierStage::COPY) {
             flags |= VK_PIPELINE_STAGE_TRANSFER_BIT;
-            flags |= VK_PIPELINE_STAGE_HOST_BIT;
         }
 
         return flags;

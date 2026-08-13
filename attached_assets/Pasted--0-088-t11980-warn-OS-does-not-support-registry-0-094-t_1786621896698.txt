@@ -1,0 +1,38 @@
+[    0.088][t11980][warn][*] OS does not support registry.
+[    0.094][t11980][logger] Marathon Recomp log started
+[    0.094][t11980][build] === APK VERSION: 1.0.0 ===
+[    0.094][t11980][build] ANDROID_BUILD_ID=1.0.0-release
+[    0.094][t11980][device] device=SM-X110 brand=samsung soc=MT8781V/NA android=15 sdk=35 vulkan_hal=mali egl_hal=meow abi=arm64-v8a ram_mb=3740
+[    0.152][t11980][*] Saving configuration...
+[    0.153][t11980][warn][*] Host Startup
+[    0.822][t11980][XAudioInitializeSystem] SDL audio driver: "openslES".
+[    0.931][t11980][*] Audio device opened: freq 48000, channels 2, samples 1024 (requested 1024)
+[    0.965][t11980][*] SDL video driver: "Android"
+[    1.089][t11980][AndroidGetCustomVulkanLoader] Android Vulkan driver mode: Auto.
+[    1.089][t11980][warn][AndroidGetCustomVulkanLoader] Detected non-Adreno GPU ("mali/meow"): the bundled Turnip driver is Adreno-only, using the system Vulkan driver.
+[    1.131][t11980][CreateHostDevice] Mali compatibility path: using CPU RGBA texture fallback.
+[    1.131][t11980][warn][CreateHostDevice] BC texture formats are unsupported by this device. Textures will be decompressed on the CPU at load time, increasing memory usage.
+[    1.131][t11980][warn][CreateHostDevice] Mali compatibility path: limiting bindless descriptors to 1024 textures and 1024 samplers to prevent libGLES_mali shader compiler crashes.
+[    1.131][t11980][CreateHostDevice] Mali compatibility path: conservative Vulkan capabilities enabled.
+[    1.131][t11980][CreateHostDevice] Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.
+[    1.131][t11980][warn][CreateHostDevice] Descriptor set sizes clamped to device limits: 1024 textures, 1024 samplers.
+[    1.131][t11980][*] Saving configuration...
+[    1.131][t11980][CreateHostDevice] CreateHostDevice: loading embedded shader cache.
+[    1.148][t11980][CreateHostDevice] CreateHostDevice: embedded shader cache loaded.
+[    1.148][t11980][*] Saving configuration...
+[crash] FATAL SIGNAL 11 (SIGSEGV) code=1 tid=11972 fault_addr=0x78
+[crash] pc=0x75d30eb6bc (libGLES_mali.so+0x169a6bc) lr=0x75d30eb5ec (libGLES_mali.so+0x169a5ec) sp=0x74f75f6a60
+[crash] backtrace (best effort):
+[crash] #0 0x74e76b33e4 (libmain.so+0xc683e4)
+[crash] #1 0x76ddc6b0a4 (libsigchain.so+0x70a4)
+[crash] #2 0x76ef73c89c ([vdso]+0x89c)
+[crash] #3 0x75d30eb6bc (libGLES_mali.so+0x169a6bc)
+[crash] #4 0x75d30eb5ec (libGLES_mali.so+0x169a5ec)
+[crash] #5 0x75d30eebec (libGLES_mali.so+0x169dbec)
+[crash] #6 0x75d2118834 (libGLES_mali.so+0x6c7834)
+[crash] #7 0x74e9c15df4 (libmain.so+0x31cadf4)
+[crash] #8 0x74e76eea5c (libmain.so+0xca3a5c)
+[crash] #9 0x74e76e7aa8 (libmain.so+0xc9caa8)
+[crash] #10 0x76e54c5d8c (libc.so+0xa7d8c)
+[crash] #11 0x76e54b74a4 (libc.so+0x994a4)
+[crash] end of report; the system tombstone (if any) has the full backtrace.

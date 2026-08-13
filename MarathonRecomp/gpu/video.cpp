@@ -45,6 +45,7 @@
 #include <xxHashMap.h>
 #include <os/logger.h>
 #include <os/process.h>
+#include <unordered_map>
 #if defined(__ANDROID__)
 #include <os/android/storage_android.h>
 #include <os/android/vulkan_driver_android.h>
@@ -1557,7 +1558,7 @@ static void AddBarrier(GuestBaseTexture* texture, RenderTextureLayout layout)
     }
 }
 
-static void FlushBarriers()
+static void FlushBarriers(RenderBarrierStages stages = RenderBarrierStage::GRAPHICS | RenderBarrierStage::COPY)
 {
     if (!g_barrierMap.empty())
     {
@@ -1570,7 +1571,7 @@ static void FlushBarriers()
             g_barriers.emplace_back(barrier);
         }
 
-        g_commandLists[g_frame]->barriers(RenderBarrierStage::GRAPHICS | RenderBarrierStage::COPY, g_barriers);
+        g_commandLists[g_frame]->barriers(stages, g_barriers);
 
         g_barrierMap.clear();
         g_barriers.clear();
@@ -1629,11 +1630,48 @@ struct MaliTextureUploadSlice
 struct MaliTextureUpload
 {
     std::unique_ptr<RenderBuffer> buffer;
-    GuestTexture* texture;
+    GuestTexture* guestTexture;
+    RenderTexture* nativeTexture;
+    uint64_t nativeGeneration;
     RenderFormat format;
     std::vector<MaliTextureUploadSlice> slices;
     std::atomic<bool>* completion;
 };
+
+// A Mali upload is recorded asynchronously by the render thread, while the
+// guest can release or replace a resource from a loading thread.  Keep the
+// guest object alive until the render command has finished consuming it.
+static std::mutex g_maliTextureUploadMutex;
+static std::condition_variable g_maliTextureUploadIdle;
+static std::unordered_map<GuestResource*, uint32_t> g_maliTextureUploadsInFlight;
+
+static void BeginMaliTextureUpload(GuestResource* resource)
+{
+    std::lock_guard lock(g_maliTextureUploadMutex);
+    ++g_maliTextureUploadsInFlight[resource];
+}
+
+static void EndMaliTextureUpload(GuestResource* resource)
+{
+    std::lock_guard lock(g_maliTextureUploadMutex);
+    auto it = g_maliTextureUploadsInFlight.find(resource);
+    if (it != g_maliTextureUploadsInFlight.end())
+    {
+        if (--it->second == 0)
+            g_maliTextureUploadsInFlight.erase(it);
+    }
+    g_maliTextureUploadIdle.notify_all();
+}
+
+static void WaitForMaliTextureUploads(GuestResource* resource)
+{
+    std::unique_lock lock(g_maliTextureUploadMutex);
+    g_maliTextureUploadIdle.wait(lock, [resource]
+    {
+        return g_maliTextureUploadsInFlight.find(resource) ==
+            g_maliTextureUploadsInFlight.end();
+    });
+}
 
 enum class RenderCommandType
 {
@@ -3562,6 +3600,9 @@ static uint32_t CreateDevice(uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4,
 
 static void DestructResource(GuestResource* resource) 
 {
+    if (g_isMali)
+        WaitForMaliTextureUploads(resource);
+
     // Needed for hack in CreateSurface (remove if fix it)
     if (resource->type == ResourceType::RenderTarget || resource->type == ResourceType::DepthStencil)
     {
@@ -3638,9 +3679,13 @@ static void QueueMaliTextureUpload(
     std::vector<MaliTextureUploadSlice> slices)
 {
     std::atomic<bool> completion{false};
+    BeginMaliTextureUpload(texture);
+
     auto upload = std::make_unique<MaliTextureUpload>();
     upload->buffer = std::move(buffer);
-    upload->texture = texture;
+    upload->guestTexture = texture;
+    upload->nativeTexture = texture->texture;
+    upload->nativeGeneration = texture->texture != nullptr ? texture->texture->generation : 0;
     upload->format = format;
     upload->slices = std::move(slices);
     upload->completion = &completion;
@@ -3661,28 +3706,48 @@ static void ProcUploadTexture(const RenderCommand& cmd)
 {
     std::unique_ptr<MaliTextureUpload> upload(cmd.uploadTexture.upload);
 
-    AddBarrier(upload->texture, RenderTextureLayout::COPY_DEST);
-    FlushBarriers();
+    const bool nativeTextureStillMatches =
+        upload->guestTexture != nullptr &&
+        upload->guestTexture->texture == upload->nativeTexture &&
+        upload->nativeTexture != nullptr &&
+        upload->nativeTexture->generation == upload->nativeGeneration;
+
+    if (!nativeTextureStillMatches)
+    {
+        // The owning guest resource was replaced before this command reached
+        // the render thread.  Do not let a stale image pointer reach Vulkan.
+        EndMaliTextureUpload(upload->guestTexture);
+        upload->completion->store(true, std::memory_order_release);
+        upload->completion->notify_one();
+        return;
+    }
+
+    AddBarrier(upload->guestTexture, RenderTextureLayout::COPY_DEST);
+    // Keep the upload transition transfer-only.  The Mali Android driver is
+    // unstable when a transfer image barrier also advertises every graphics
+    // access stage, and this transition has no graphics consumer yet.
+    FlushBarriers(RenderBarrierStage::COPY);
 
     for (const auto& slice : upload->slices)
     {
         g_commandLists[g_frame]->copyTextureRegion(
             RenderTextureCopyLocation::Subresource(
-                upload->texture->texture, slice.mipLevel, slice.arrayLayer),
+                upload->nativeTexture, slice.mipLevel, slice.arrayLayer),
             RenderTextureCopyLocation::PlacedFootprint(
                 upload->buffer.get(), upload->format, slice.width, slice.height,
                 slice.depth, slice.rowWidth, slice.bufferOffset));
     }
 
     g_commandLists[g_frame]->barriers(RenderBarrierStage::GRAPHICS,
-        RenderTextureBarrier(upload->texture->texture, RenderTextureLayout::SHADER_READ));
-    upload->texture->layout = RenderTextureLayout::SHADER_READ;
+        RenderTextureBarrier(upload->nativeTexture, RenderTextureLayout::SHADER_READ));
+    upload->guestTexture->layout = RenderTextureLayout::SHADER_READ;
 
     // The command buffer only stores the upload buffer reference. Retain it
     // with the frame until its fence is complete, then DestructTempResources
     // can safely release it.
     g_tempBuffers[g_frame].emplace_back(std::move(upload->buffer));
 
+    EndMaliTextureUpload(upload->guestTexture);
     upload->completion->store(true, std::memory_order_release);
     upload->completion->notify_one();
 }
@@ -3692,7 +3757,7 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
     const auto& args = cmd.unlockTextureRect;
 
     AddBarrier(args.texture, RenderTextureLayout::COPY_DEST);
-    FlushBarriers();
+    FlushBarriers(RenderBarrierStage::COPY);
 
     uint32_t pitch = ComputeTexturePitch(args.texture);
     uint32_t slicePitch = pitch * ComputeTextureRowCount(args.texture);
