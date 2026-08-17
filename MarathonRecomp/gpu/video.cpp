@@ -445,32 +445,105 @@ static std::unique_ptr<RenderPipeline> g_gammaCorrectionPipeline;
 
 static std::unique_ptr<RenderDescriptorSet> g_textureDescriptorSet;
 static std::unique_ptr<RenderDescriptorSet> g_samplerDescriptorSet;
+// Mali does not use UPDATE_AFTER_BIND for the bindless arrays. Keep one
+// descriptor set per frame slot so a loader/destruction update never mutates
+// the set referenced by an already-submitted frame.
+static std::unique_ptr<RenderDescriptorSet> g_textureDescriptorSets[NUM_FRAMES];
+static std::unique_ptr<RenderDescriptorSet> g_samplerDescriptorSets[NUM_FRAMES];
 static Mutex g_textureDescriptorMutex;
 static bool g_isMali;
+static xxHashMap<std::pair<uint32_t, std::unique_ptr<RenderSampler>>> g_samplerStates;
+static constexpr size_t SAMPLER_DESCRIPTOR_SIZE = 1024;
+// The device-limit clamp below may reduce this after device creation.
+static uint32_t g_samplerDescriptorSize = SAMPLER_DESCRIPTOR_SIZE;
 
-// Texture descriptors may be updated by loader workers while the render
-// thread is recording a frame. Descriptor writes are not a synchronization
-// primitive, so keep the backend descriptor-set mutation serialized.
+struct TextureDescriptorUpdate
+{
+    RenderTexture* texture = nullptr;
+    RenderTextureLayout layout = RenderTextureLayout::UNKNOWN;
+    RenderTextureView* view = nullptr;
+};
+
+// This is the authoritative latest value for each fixed Mali slot. A worker
+// publishes here; the render thread copies the values into the frame slot
+// before that slot is begun. Keeping the value by index also makes a
+// destruction update (blank texture) supersede a queued creation update.
+static std::unordered_map<uint32_t, TextureDescriptorUpdate> g_textureDescriptorUpdates;
+
+static RenderDescriptorSet* CurrentTextureDescriptorSet()
+{
+    return g_isMali ? g_textureDescriptorSets[g_frame].get() : g_textureDescriptorSet.get();
+}
+
+static RenderDescriptorSet* CurrentSamplerDescriptorSet()
+{
+    return g_isMali ? g_samplerDescriptorSets[g_frame].get() : g_samplerDescriptorSet.get();
+}
+
+static void ApplyMaliTextureDescriptorUpdates()
+{
+    if (!g_isMali)
+        return;
+
+    RenderDescriptorSet* descriptorSet = g_textureDescriptorSets[g_frame].get();
+    if (descriptorSet == nullptr)
+        return;
+
+    std::lock_guard lock(g_textureDescriptorMutex);
+    for (const auto& [index, update] : g_textureDescriptorUpdates)
+        descriptorSet->setTexture(index, update.texture, update.layout, update.view);
+}
+
+static void ApplyMaliSamplerDescriptorUpdates()
+{
+    if (!g_isMali)
+        return;
+
+    RenderDescriptorSet* descriptorSet = g_samplerDescriptorSets[g_frame].get();
+    if (descriptorSet == nullptr)
+        return;
+
+    // Sampler objects are owned by g_samplerStates and remain alive for the
+    // device lifetime. Replaying the cache into the newly available frame
+    // slot avoids mutating a descriptor set that is still in flight.
+    for (const auto& [hash, state] : g_samplerStates)
+    {
+        const uint32_t descriptorIndex = state.first;
+        if (descriptorIndex != 0 && descriptorIndex - 1 < g_samplerDescriptorSize)
+            descriptorSet->setSampler(descriptorIndex - 1, state.second.get());
+    }
+}
+
+// Descriptor writes are not a synchronization primitive. On Mali, workers
+// never write a descriptor set directly. The current frame slot may be
+// updated by the render thread because it is not submitted while recording;
+// a submitted slot is left untouched and receives the latest value when it is
+// recycled at the next BeginCommandList().
 static void SetTextureDescriptor(
     uint32_t index,
     RenderTexture* texture,
     RenderTextureLayout layout,
     RenderTextureView* view = nullptr)
 {
-    assert(g_textureDescriptorSet != nullptr);
+    assert(CurrentTextureDescriptorSet() != nullptr);
 
-    // Mali uses fixed descriptor arrays without UPDATE_AFTER_BIND. Updating a
-    // descriptor set while an earlier frame is still using it is invalid
-    // Vulkan, even when the update targets a previously unused array slot.
-    // Loader workers can publish textures while frames are in flight, so wait
-    // for those frames before touching the shared fixed descriptor set.
-    if (g_isMali && g_queue != nullptr &&
-        std::this_thread::get_id() != g_renderThreadId)
+    if (g_isMali)
     {
-        // Loader workers can publish textures while frames are in flight.
-        // Descriptor writes are not a synchronization primitive on the
-        // fixed Mali descriptor set.
-        Video::WaitForGPU();
+        std::lock_guard lock(g_textureDescriptorMutex);
+        g_textureDescriptorUpdates[index] = { texture, layout, view };
+
+        // A worker may arrive between queue submission and Present(), when
+        // g_graphicsCommandListOpen is false but the current slot is still
+        // fenced. Only write immediately when the current slot is definitely
+        // not in flight. Otherwise the shadow is replayed on slot recycling.
+        const bool currentSlotInFlight = g_commandListStates[g_frame].load(std::memory_order_acquire);
+        const bool renderThread = std::this_thread::get_id() == g_renderThreadId;
+        if (!currentSlotInFlight && (renderThread ||
+            !g_graphicsCommandListOpen.load(std::memory_order_acquire)))
+        {
+            g_textureDescriptorSets[g_frame]->setTexture(index, texture, layout, view);
+        }
+        return;
     }
 
     std::lock_guard lock(g_textureDescriptorMutex);
@@ -651,7 +724,6 @@ static uint8_t* const g_vertexDeclarationCache[] =
 #include "cache/vertex_declaration_cache.h"
 };
 
-static xxHashMap<std::pair<uint32_t, std::unique_ptr<RenderSampler>>> g_samplerStates;
 static bool g_samplerOverflowWarned = false;
 
 static Mutex g_vertexDeclarationMutex;
@@ -1899,6 +1971,15 @@ struct RenderCommand
 
 static moodycamel::BlockingConcurrentQueue<RenderCommand> g_renderQueue;
 
+// Upload commands can cross a Present() boundary: the render thread may
+// dequeue them after ExecuteCommandList() closes the current buffer but before
+// the following BeginCommandList() command. Keep ownership of those commands
+// on the render thread and replay them as soon as the next buffer is open.
+static std::vector<RenderCommand> g_deferredMaliTextureCommands;
+
+static void ProcUploadTexture(const RenderCommand& cmd);
+static void ProcUnlockTextureRect(const RenderCommand& cmd);
+
 template<GuestRenderState TType>
 static void SetRenderState(GuestDevice* device, uint32_t value)
 {
@@ -2334,12 +2415,10 @@ static bool DetectWine()
 #endif
 
 static constexpr size_t TEXTURE_DESCRIPTOR_SIZE = 32768;
-static constexpr size_t SAMPLER_DESCRIPTOR_SIZE = 1024;
 
 // Clamped to the device's descriptor set limits after device creation. Desktop GPUs and
 // recent Mali report far more than the defaults; PowerVR is the family that can go lower.
 static uint32_t g_textureDescriptorSize = TEXTURE_DESCRIPTOR_SIZE;
-static uint32_t g_samplerDescriptorSize = SAMPLER_DESCRIPTOR_SIZE;
 // Upload-buffer alignment constants.  These are the desktop-default values;
 // g_uploadPitchAlignment / g_uploadPlacementAlignment below are the runtime
 // values that may be overridden per-device.
@@ -2742,6 +2821,12 @@ static void BeginCommandList()
 
     auto& commandList = g_commandLists[g_frame];
 
+    // g_frame was fenced before Present() selected this slot. Apply worker
+    // publications before binding the fixed Mali descriptor sets, never while
+    // a submitted command buffer can still reference them.
+    ApplyMaliTextureDescriptorUpdates();
+    ApplyMaliSamplerDescriptorUpdates();
+
     commandList->begin();
     g_graphicsCommandListOpen.store(true, std::memory_order_release);
     if (g_capabilities.queryPools)
@@ -2750,15 +2835,28 @@ static void BeginCommandList()
         commandList->writeTimestamp(g_queryPools[g_frame].get(), 0);
     }
     commandList->setGraphicsPipelineLayout(g_pipelineLayout.get());
-    commandList->setGraphicsDescriptorSet(g_textureDescriptorSet.get(), 0);
-    commandList->setGraphicsDescriptorSet(g_textureDescriptorSet.get(), 1);
-    commandList->setGraphicsDescriptorSet(g_textureDescriptorSet.get(), 2);
-    commandList->setGraphicsDescriptorSet(g_samplerDescriptorSet.get(), 3);
+    commandList->setGraphicsDescriptorSet(CurrentTextureDescriptorSet(), 0);
+    commandList->setGraphicsDescriptorSet(CurrentTextureDescriptorSet(), 1);
+    commandList->setGraphicsDescriptorSet(CurrentTextureDescriptorSet(), 2);
+    commandList->setGraphicsDescriptorSet(CurrentSamplerDescriptorSet(), 3);
     if (g_capabilities.conditionalSurvey)
         commandList->setGraphicsDescriptorSet(g_conditionalSurveyDescriptorSet.get(), 4);
 
     g_readyForCommands = true;
     g_readyForCommands.notify_one();
+
+    if (g_isMali && !g_deferredMaliTextureCommands.empty())
+    {
+        auto deferredCommands = std::move(g_deferredMaliTextureCommands);
+        g_deferredMaliTextureCommands.clear();
+        for (const RenderCommand& deferred : deferredCommands)
+        {
+            if (deferred.type == RenderCommandType::UploadTexture)
+                ProcUploadTexture(deferred);
+            else
+                ProcUnlockTextureRect(deferred);
+        }
+    }
 }
 
 template<typename T>
@@ -3245,7 +3343,15 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     descriptorSetBuilder.addTexture(0, g_textureDescriptorSize);
     ConfigureBindlessDescriptorSet(descriptorSetBuilder, g_textureDescriptorSize);
     
-    g_textureDescriptorSet = descriptorSetBuilder.create(g_device.get());
+    if (g_isMali)
+    {
+        for (auto& descriptorSet : g_textureDescriptorSets)
+            descriptorSet = descriptorSetBuilder.create(g_device.get());
+    }
+    else
+    {
+        g_textureDescriptorSet = descriptorSetBuilder.create(g_device.get());
+    }
     
     for (size_t i = 0; i < TEXTURE_DESCRIPTOR_NULL_COUNT; i++)
     {
@@ -3301,12 +3407,15 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
         // The Mali layout deliberately omits PARTIALLY_BOUND. Initialize all
         // fixed texture slots so a shader indexing a slot before its real
         // resource is published still observes a valid image descriptor.
-        for (uint32_t i = TEXTURE_DESCRIPTOR_NULL_COUNT; i < g_textureDescriptorSize; ++i)
+        for (auto& descriptorSet : g_textureDescriptorSets)
         {
-            SetTextureDescriptor(i,
-                g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
-                RenderTextureLayout::SHADER_READ,
-                g_blankTextureViews[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get());
+            for (uint32_t i = TEXTURE_DESCRIPTOR_NULL_COUNT; i < g_textureDescriptorSize; ++i)
+            {
+                descriptorSet->setTexture(i,
+                    g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
+                    RenderTextureLayout::SHADER_READ,
+                    g_blankTextureViews[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get());
+            }
         }
     }
 
@@ -3318,17 +3427,32 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     descriptorSetBuilder.addSampler(0, g_samplerDescriptorSize);
     ConfigureBindlessDescriptorSet(descriptorSetBuilder, g_samplerDescriptorSize);
     
-    g_samplerDescriptorSet = descriptorSetBuilder.create(g_device.get());
+    if (g_isMali)
+    {
+        for (auto& descriptorSet : g_samplerDescriptorSets)
+            descriptorSet = descriptorSetBuilder.create(g_device.get());
+    }
+    else
+    {
+        g_samplerDescriptorSet = descriptorSetBuilder.create(g_device.get());
+    }
     auto& [descriptorIndex, sampler] = g_samplerStates[XXH3_64bits(&g_samplerDescs[0], sizeof(RenderSamplerDesc))];
     descriptorIndex = 1;
     sampler = g_device->createSampler(g_samplerDescs[0]);
-    g_samplerDescriptorSet->setSampler(0, sampler.get());
     if (g_isMali)
     {
         // The fixed Mali sampler binding cannot be partially bound. Keep all
         // entries valid until the sampler cache publishes their real sampler.
-        for (uint32_t i = 1; i < g_samplerDescriptorSize; ++i)
-            g_samplerDescriptorSet->setSampler(i, sampler.get());
+        for (auto& descriptorSet : g_samplerDescriptorSets)
+        {
+            descriptorSet->setSampler(0, sampler.get());
+            for (uint32_t i = 1; i < g_samplerDescriptorSize; ++i)
+                descriptorSet->setSampler(i, sampler.get());
+        }
+    }
+    else
+    {
+        g_samplerDescriptorSet->setSampler(0, sampler.get());
     }
 
     pipelineLayoutBuilder.addDescriptorSet(descriptorSetBuilder);
@@ -3489,11 +3613,9 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     g_commandLists[g_frame]->barriers(RenderBarrierStage::NONE, blankTextureBarriers, std::size(blankTextureBarriers));
 
     // The bootstrap command list stays open until the first guest Present.
-    // CreateDevice can load achievement textures before that Present, so
-    // making startup uploads wait for this list would deadlock the guest
-    // before the render thread gets a chance to close it. Normal frame lists
-    // are still protected by the flag set in BeginCommandList().
-    g_graphicsCommandListOpen.store(false, std::memory_order_release);
+    // Keep the state flag true: startup texture uploads are recorded into
+    // this list just like uploads in a normal frame. Uploads that race a
+    // later Present are deferred by their render-thread handlers.
 
     return true;
 }
@@ -3704,6 +3826,13 @@ static void QueueMaliTextureUpload(
 
 static void ProcUploadTexture(const RenderCommand& cmd)
 {
+    if (g_isMali &&
+        !g_graphicsCommandListOpen.load(std::memory_order_acquire))
+    {
+        g_deferredMaliTextureCommands.emplace_back(cmd);
+        return;
+    }
+
     std::unique_ptr<MaliTextureUpload> upload(cmd.uploadTexture.upload);
 
     const bool nativeTextureStillMatches =
@@ -3754,6 +3883,13 @@ static void ProcUploadTexture(const RenderCommand& cmd)
 
 static void ProcUnlockTextureRect(const RenderCommand& cmd)
 {
+    if (g_isMali &&
+        !g_graphicsCommandListOpen.load(std::memory_order_acquire))
+    {
+        g_deferredMaliTextureCommands.emplace_back(cmd);
+        return;
+    }
+
     const auto& args = cmd.unlockTextureRect;
 
     AddBarrier(args.texture, RenderTextureLayout::COPY_DEST);
@@ -4385,8 +4521,8 @@ static void ProcDrawImGui(const RenderCommand& cmd)
 
     commandList->setGraphicsPipelineLayout(g_imPipelineLayout.get());
     commandList->setPipeline(pipeline);
-    commandList->setGraphicsDescriptorSet(g_textureDescriptorSet.get(), 0);
-    commandList->setGraphicsDescriptorSet(g_samplerDescriptorSet.get(), 1);
+    commandList->setGraphicsDescriptorSet(CurrentTextureDescriptorSet(), 0);
+    commandList->setGraphicsDescriptorSet(CurrentSamplerDescriptorSet(), 1);
 
     auto& drawData = *ImGui::GetDrawData();
     commandList->setViewports(RenderViewport(drawData.DisplayPos.x, drawData.DisplayPos.y, drawData.DisplaySize.x, drawData.DisplaySize.y));
@@ -4727,7 +4863,7 @@ static void ProcExecuteCommandList(const RenderCommand& cmd)
             commandList->barriers(RenderBarrierStage::GRAPHICS, srcBarriers, std::size(srcBarriers));
             commandList->setGraphicsPipelineLayout(g_pipelineLayout.get());
             commandList->setPipeline(g_gammaCorrectionPipeline.get());
-            commandList->setGraphicsDescriptorSet(g_textureDescriptorSet.get(), 0);
+            commandList->setGraphicsDescriptorSet(CurrentTextureDescriptorSet(), 0);
             SetRootDescriptor(g_uploadAllocators[g_frame].allocate<false>(&constants, sizeof(constants), 0x100), 2);
             commandList->setFramebuffer(framebuffer.get());
             commandList->setViewports(RenderViewport(0.0f, 0.0f, g_swapChain->getWidth(), g_swapChain->getHeight()));
@@ -6422,7 +6558,8 @@ static void ProcSetSamplerState(const RenderCommand& cmd)
             {
                 descriptorIndex = candidate;
                 sampler = g_device->createSampler(samplerDesc);
-                g_samplerDescriptorSet->setSampler(descriptorIndex - 1, sampler.get());
+                if (!g_isMali)
+                    g_samplerDescriptorSet->setSampler(descriptorIndex - 1, sampler.get());
             }
             else
             {

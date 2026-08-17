@@ -12,3 +12,4 @@
 - [Generated shader dependencies](generated-shader-dependencies.md) — CMake shader custom commands must track included HLSL headers or stale SPIR-V can ship after renderer fixes.
 - [Android present threading](android-present-threading.md) — loading and gameplay can present concurrently during startup, so the whole present transaction must be serialized.
 - [Mali Vulkan object creation](mali-object-creation.md) — serialize backend Vulkan object construction when Android resource loading overlaps render-thread pipeline compilation.
+- [Mali command-buffer boundaries](mali-command-buffer-boundaries.md) — defer uploads that cross Present/BeginCommandList boundaries until the graphics command buffer is open.
