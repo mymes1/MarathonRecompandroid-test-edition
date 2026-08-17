@@ -70,6 +70,15 @@ namespace
     constexpr float SCALE_MIN = 0.60f;
     constexpr float SCALE_MAX = 1.60f;
 
+    // Mali's transparent framebuffer blending can make a low-alpha black
+    // overlay disappear against dark gameplay or a partially corrupted frame.
+    // Keep the controls readable without making them opaque: the backing is
+    // tinted, outlined, and the glyph gets a small shadow below.
+    constexpr int CONTROL_IDLE_ALPHA = 150;
+    constexpr int CONTROL_PRESSED_ALPHA = 220;
+    constexpr int CONTROL_OUTLINE_ALPHA = 225;
+    constexpr int CONTROL_GLYPH_ALPHA = 255;
+
     struct Layout
     {
         float x[TC_COUNT];
@@ -288,8 +297,12 @@ namespace
         // the wide shoulder/trigger buttons.
         const float fontPx = std::min(halfW, halfH) * 1.15f;
         const ImVec2 ts = font->CalcTextSizeA(fontPx, FLT_MAX, 0.0f, label);
-        dl->AddText(font, fontPx, { c.x - ts.x * 0.5f, c.y - ts.y * 0.5f },
-            IM_COL32(255, 255, 255, alpha), label);
+        const ImVec2 textPos { c.x - ts.x * 0.5f, c.y - ts.y * 0.5f };
+        // The shadow keeps white labels legible over both bright level art and
+        // the black letterbox bars used by the game.
+        dl->AddText(font, fontPx, { textPos.x + 2.0f, textPos.y + 2.0f },
+            IM_COL32(0, 0, 0, std::min(alpha, 235)), label);
+        dl->AddText(font, fontPx, textPos, IM_COL32(255, 255, 255, alpha), label);
     }
 
     // Round face button (A/B/X/Y): dark backing disc + coloured glyph on top.
@@ -300,8 +313,12 @@ namespace
         if (pressed)
             st.wButtons |= bit;
 
-        dl->AddCircleFilled(c, r * 1.25f, IM_COL32(0, 0, 0, pressed ? 120 : 70), 32);
-        DrawGlyph(dl, c, r, r, label, pressed ? 255 : 210);
+        const ImU32 fill = pressed
+            ? IM_COL32(35, 120, 205, CONTROL_PRESSED_ALPHA)
+            : IM_COL32(8, 18, 34, CONTROL_IDLE_ALPHA);
+        dl->AddCircleFilled(c, r * 1.25f, fill, 32);
+        dl->AddCircle(c, r * 1.25f, IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), 32, 2.5f);
+        DrawGlyph(dl, c, r, r, label, CONTROL_GLYPH_ALPHA);
     }
 
     // Wide button (shoulders/triggers/start/back): rounded backing + glyph.
@@ -310,9 +327,14 @@ namespace
     {
         const bool pressed = AnyFingerInRect(pts, { c.x - halfW, c.y - halfH }, { c.x + halfW, c.y + halfH });
 
+        const ImU32 fill = pressed
+            ? IM_COL32(35, 120, 205, CONTROL_PRESSED_ALPHA)
+            : IM_COL32(8, 18, 34, CONTROL_IDLE_ALPHA);
         dl->AddRectFilled({ c.x - halfW, c.y - halfH }, { c.x + halfW, c.y + halfH },
-            IM_COL32(0, 0, 0, pressed ? 120 : 70), halfH * 0.5f);
-        DrawGlyph(dl, c, glyphHalfW, glyphHalfH, label, pressed ? 255 : 210);
+            fill, halfH * 0.5f);
+        dl->AddRect({ c.x - halfW, c.y - halfH }, { c.x + halfW, c.y + halfH },
+            IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), halfH * 0.5f, 0, 2.5f);
+        DrawGlyph(dl, c, glyphHalfW, glyphHalfH, label, CONTROL_GLYPH_ALPHA);
 
         return pressed;
     }
@@ -368,30 +390,33 @@ namespace
     {
         if (i == TC_STICK || i == TC_RSTICK)
         {
-            dl->AddCircleFilled(r.c, r.hw, IM_COL32(0, 0, 0, 55), 48);
-            dl->AddCircle(r.c, r.hw, IM_COL32(255, 255, 255, 130), 48, 3.0f);
+            dl->AddCircleFilled(r.c, r.hw, IM_COL32(8, 18, 34, CONTROL_IDLE_ALPHA), 48);
+            dl->AddCircle(r.c, r.hw, IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), 48, 3.0f);
             const float thumb = r.hw * (i == TC_RSTICK ? RSTICK_THUMB_R / RSTICK_BASE_R
                                                        : STICK_THUMB_R / STICK_BASE_R);
-            dl->AddCircleFilled(r.c, thumb, IM_COL32(255, 255, 255, 110), 32);
+            dl->AddCircleFilled(r.c, thumb, IM_COL32(235, 245, 255, 190), 32);
             return;
         }
 
         if (i >= TC_A && i <= TC_Y)
         {
-            dl->AddCircleFilled(r.c, r.hw * 1.25f, IM_COL32(0, 0, 0, 70), 32);
-            DrawGlyph(dl, r.c, r.hw, r.hw, kIcon[i], 210);
+            dl->AddCircleFilled(r.c, r.hw * 1.25f, IM_COL32(8, 18, 34, CONTROL_IDLE_ALPHA), 32);
+            dl->AddCircle(r.c, r.hw * 1.25f, IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), 32, 2.5f);
+            DrawGlyph(dl, r.c, r.hw, r.hw, kIcon[i], CONTROL_GLYPH_ALPHA);
             return;
         }
 
         dl->AddRectFilled({ r.c.x - r.hw, r.c.y - r.hh }, { r.c.x + r.hw, r.c.y + r.hh },
-            IM_COL32(0, 0, 0, 70), r.hh * 0.5f);
+            IM_COL32(8, 18, 34, CONTROL_IDLE_ALPHA), r.hh * 0.5f);
+        dl->AddRect({ r.c.x - r.hw, r.c.y - r.hh }, { r.c.x + r.hw, r.c.y + r.hh },
+            IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), r.hh * 0.5f, 0, 2.5f);
 
         float gw, gh;
         if (i == TC_LB || i == TC_RB)      { gw = r.hw * 0.75f; gh = r.hh * 0.85f; }
         else if (i == TC_LT || i == TC_RT) { gw = r.hh * 0.95f; gh = r.hh * 0.95f; }
         else                               { gw = r.hw;         gh = r.hh; } // Start / Back
 
-        DrawGlyph(dl, r.c, gw, gh, kIcon[i], 210);
+        DrawGlyph(dl, r.c, gw, gh, kIcon[i], CONTROL_GLYPH_ALPHA);
     }
 }
 

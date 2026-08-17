@@ -151,20 +151,11 @@ PPC_FUNC(sub_825EA610)
 PPC_FUNC_IMPL(__imp__sub_82582648);
 PPC_FUNC(sub_82582648)
 {
-    struct File
-    {
-    public:
-        MARATHON_INSERT_PADDING(4);
-        xpointer<const char> pFilePath;
-        MARATHON_INSERT_PADDING(0x0C);
-        be<uint32_t> Length;
-        be<uint32_t> Capacity;
-    };
-
-    auto pFile = reinterpret_cast<File*>(base + ctx.r5.u32);
-
-    if (pFile->pFilePath && pFile->Length > 0)
-        LOGFN_UTILITY("Loading file: {}", pFile->pFilePath.get());
+    // This hook is diagnostic only.  File::Length is the file data length, not
+    // the length of the path string, and temporary file objects can also carry
+    // stale path pointers.  Do not format/read the guest path here: doing so
+    // can scan past guest memory and corrupt the Android stack before the real
+    // file routine gets a chance to run.
 
     __imp__sub_82582648(ctx, base);
 }

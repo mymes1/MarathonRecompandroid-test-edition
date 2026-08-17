@@ -1,0 +1,23 @@
+[    0.096][t26806][warn][*] OS does not support registry.
+[    0.100][t26806][logger] Marathon Recomp log started
+[    0.100][t26806][build] === APK VERSION: 1.0.0 ===
+[    0.100][t26806][build] ANDROID_BUILD_ID=1.0.0-release
+[    0.100][t26806][device] device=SM-X110 brand=samsung soc=MT8781V/NA android=15 sdk=35 vulkan_hal=mali egl_hal=meow abi=arm64-v8a ram_mb=3740
+[    0.175][t26806][*] Saving configuration...
+[    0.176][t26806][warn][*] Host Startup
+[    0.854][t26806][XAudioInitializeSystem] SDL audio driver: "openslES".
+[    0.965][t26806][*] Audio device opened: freq 48000, channels 2, samples 1024 (requested 1024)
+[    1.002][t26806][*] SDL video driver: "Android"
+[    1.144][t26806][AndroidGetCustomVulkanLoader] Android Vulkan driver mode: Auto.
+[    1.144][t26806][warn][AndroidGetCustomVulkanLoader] Detected non-Adreno GPU ("mali/meow"): the bundled Turnip driver is Adreno-only, using the system Vulkan driver.
+[    1.188][t26806][CreateHostDevice] Mali compatibility path: using CPU RGBA texture fallback.
+[    1.188][t26806][warn][CreateHostDevice] BC texture formats are unsupported by this device. Textures will be decompressed on the CPU at load time, increasing memory usage.
+[    1.188][t26806][warn][CreateHostDevice] Mali compatibility path: limiting bindless descriptors to 1024 textures and 1024 samplers to prevent libGLES_mali shader compiler crashes.
+[    1.188][t26806][CreateHostDevice] Mali compatibility path: conservative Vulkan capabilities enabled.
+[    1.188][t26806][CreateHostDevice] Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.
+[    1.188][t26806][warn][CreateHostDevice] Descriptor set sizes clamped to device limits: 1024 textures, 1024 samplers.
+[    1.188][t26806][*] Saving configuration...
+[    1.188][t26806][CreateHostDevice] CreateHostDevice: loading embedded shader cache.
+[    1.205][t26806][CreateHostDevice] CreateHostDevice: embedded shader cache loaded.
+[    1.205][t26806][*] Saving configuration...
+[   34.161][t26735][*] Saving configuration...

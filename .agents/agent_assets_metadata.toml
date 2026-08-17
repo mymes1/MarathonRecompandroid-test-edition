@@ -5,5 +5,5 @@ generated = []
 id = "BPl3W1JKL2XNAicy39SmR"
 uri = "file://android-apk/app/build/outputs/apk/debug/app-debug.apk"
 type = "unspecified"
-title = "Marathon Recomp Android APK — Mali startup fix"
-description = "Fresh debug APK built for arm64-v8a with the SM-X110 Mali upload lifetime and Vulkan barrier fixes."
+title = "Marathon Recompiled — SM-X110 Android 15 APK"
+description = "Fresh arm64-v8a debug APK rebuilt with the visible touch-control overlay and Samsung Galaxy Tab A9 Wi-Fi (SM-X110) Mali compatibility fixes."

@@ -8,6 +8,7 @@
 #include <os/logger.h>
 #include <array>
 #include <cstdint>
+#include <mutex>
 
 #define D3DCLEAR_TARGET  0x1
 #define D3DCLEAR_ZBUFFER 0x10
@@ -237,6 +238,9 @@ struct GuestBuffer : GuestResource
     std::unique_ptr<uint8_t[]> maliGuestSnapshot;
     bool maliGuestSnapshotValid = false;
     uint64_t maliGuestSnapshotGeneration = 0;
+    // Unlock runs on the guest thread while draw-time publication runs on the
+    // render thread. Protect both the snapshot bytes and their generation.
+    std::mutex maliGuestSnapshotMutex;
     RenderBufferReference maliFrameReference{};
     uint64_t maliFrameSerial = 0;
     uint64_t maliFrameSnapshotGeneration = 0;

@@ -1256,6 +1256,7 @@ template<typename T>
 static RenderBufferReference UploadMaliGuestIndexBuffer(GuestBuffer* buffer)
 {
     assert(buffer != nullptr);
+    std::lock_guard snapshotLock(buffer->maliGuestSnapshotMutex);
 
     const uint32_t elementSize = sizeof(T);
     if (buffer->dataSize == 0 || buffer->dataSize % elementSize != 0)
@@ -1433,6 +1434,7 @@ static RenderBufferReference UploadMaliGuestVertexBuffer(
     uint32_t streamOffset)
 {
     assert(buffer != nullptr);
+    std::lock_guard snapshotLock(buffer->maliGuestSnapshotMutex);
     assert(stream < std::size(buffer->maliVertexFrameCache));
 
     const uint32_t stride = g_pipelineState.vertexStrides[stream];
@@ -1576,9 +1578,15 @@ static void RefreshMaliActiveBufferViews()
     if (g_indexBuffer != nullptr)
     {
         const RenderBufferReference reference = GetMaliIndexReference(g_indexBuffer);
-        if (g_indexBufferView.buffer != reference)
+        const RenderFormat format = g_indexBuffer->format;
+        const uint32_t size = g_indexBuffer->dataSize;
+        if (g_indexBufferView.buffer != reference ||
+            g_indexBufferView.format != format ||
+            g_indexBufferView.size != size)
         {
             g_indexBufferView.buffer = reference;
+            g_indexBufferView.format = format;
+            g_indexBufferView.size = size;
             g_dirtyStates.indices = true;
         }
     }
@@ -1707,15 +1715,14 @@ struct MaliTextureUpload
     uint64_t nativeGeneration;
     RenderFormat format;
     std::vector<MaliTextureUploadSlice> slices;
-    std::atomic<bool>* completion;
 };
 
 // A Mali upload is recorded asynchronously by the render thread, while the
 // guest can release or replace a resource from a loading thread.  Keep the
 // guest object alive until the render command has finished consuming it.
 static std::mutex g_maliTextureUploadMutex;
-static std::condition_variable g_maliTextureUploadIdle;
 static std::unordered_map<GuestResource*, uint32_t> g_maliTextureUploadsInFlight;
+static std::vector<GuestResource*> g_deferredMaliResourceDestructions;
 
 static void BeginMaliTextureUpload(GuestResource* resource)
 {
@@ -1732,17 +1739,13 @@ static void EndMaliTextureUpload(GuestResource* resource)
         if (--it->second == 0)
             g_maliTextureUploadsInFlight.erase(it);
     }
-    g_maliTextureUploadIdle.notify_all();
 }
 
-static void WaitForMaliTextureUploads(GuestResource* resource)
+static bool HasMaliTextureUpload(GuestResource* resource)
 {
-    std::unique_lock lock(g_maliTextureUploadMutex);
-    g_maliTextureUploadIdle.wait(lock, [resource]
-    {
-        return g_maliTextureUploadsInFlight.find(resource) ==
-            g_maliTextureUploadsInFlight.end();
-    });
+    std::lock_guard lock(g_maliTextureUploadMutex);
+    return g_maliTextureUploadsInFlight.find(resource) !=
+        g_maliTextureUploadsInFlight.end();
 }
 
 enum class RenderCommandType
@@ -1806,6 +1809,11 @@ struct RenderCommand
         {
             GuestTexture* texture;
             std::atomic<bool>* completion;
+            // Mali unlocks are copied before returning to the guest thread.
+            // The render command owns this snapshot so it remains valid if
+            // the guest immediately re-locks the texture.
+            uint8_t* snapshot;
+            uint32_t snapshotSize;
         } unlockTextureRect;
 
         struct
@@ -1979,6 +1987,7 @@ static std::vector<RenderCommand> g_deferredMaliTextureCommands;
 
 static void ProcUploadTexture(const RenderCommand& cmd);
 static void ProcUnlockTextureRect(const RenderCommand& cmd);
+static void ProcDestructResource(const RenderCommand& cmd);
 
 template<GuestRenderState TType>
 static void SetRenderState(GuestDevice* device, uint32_t value)
@@ -2827,8 +2836,11 @@ static void BeginCommandList()
     ApplyMaliTextureDescriptorUpdates();
     ApplyMaliSamplerDescriptorUpdates();
 
-    commandList->begin();
     g_graphicsCommandListOpen.store(true, std::memory_order_release);
+    // Publish the recording state before begin(). A loader that observes a
+    // closed state must be allowed to submit only before this transition; it
+    // must never race the command-buffer begin operation.
+    commandList->begin();
     if (g_capabilities.queryPools)
     {
         commandList->resetQueryPool(g_queryPools[g_frame].get(), 0, NUM_QUERIES);
@@ -2855,6 +2867,24 @@ static void BeginCommandList()
                 ProcUploadTexture(deferred);
             else
                 ProcUnlockTextureRect(deferred);
+        }
+    }
+
+    if (g_isMali && !g_deferredMaliResourceDestructions.empty())
+    {
+        auto deferredResources = std::move(g_deferredMaliResourceDestructions);
+        g_deferredMaliResourceDestructions.clear();
+        for (GuestResource* resource : deferredResources)
+        {
+            if (HasMaliTextureUpload(resource))
+                g_deferredMaliResourceDestructions.push_back(resource);
+            else
+            {
+                RenderCommand destruction{};
+                destruction.type = RenderCommandType::DestructResource;
+                destruction.destructResource.resource = resource;
+                ProcDestructResource(destruction);
+            }
         }
     }
 }
@@ -3722,9 +3752,6 @@ static uint32_t CreateDevice(uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4,
 
 static void DestructResource(GuestResource* resource) 
 {
-    if (g_isMali)
-        WaitForMaliTextureUploads(resource);
-
     // Needed for hack in CreateSurface (remove if fix it)
     if (resource->type == ResourceType::RenderTarget || resource->type == ResourceType::DepthStencil)
     {
@@ -3742,6 +3769,15 @@ static void DestructResource(GuestResource* resource)
 static void ProcDestructResource(const RenderCommand& cmd)
 {
     const auto& args = cmd.destructResource;
+    // A deferred Mali upload owns the native texture pointer until the render
+    // thread has validated and consumed it. Never destroy the guest wrapper
+    // in the gap between ExecuteCommandList and the next BeginCommandList;
+    // that gap is exactly where uploads are intentionally deferred.
+    if (g_isMali && HasMaliTextureUpload(args.resource))
+    {
+        g_deferredMaliResourceDestructions.push_back(args.resource);
+        return;
+    }
     g_tempResources[g_frame].push_back(args.resource);
 }
 
@@ -3779,19 +3815,27 @@ static void UnlockTextureRect(GuestTexture* texture)
 {
     assert(std::this_thread::get_id() == g_presentThreadId);
 
+    const uint32_t pitch = ComputeTexturePitch(texture);
+    const uint32_t slicePitch = pitch * ComputeTextureRowCount(texture);
+
     // The guest can immediately relock and reuse the CPU lock buffer after
-    // this call returns. Mali needs the render-thread copy to be complete
-    // before that memory is reused, otherwise scene transitions can upload
-    // mixed old/new texture rows and produce the observed tearing/morphing.
-    std::atomic<bool> completion{false};
+    // this call returns. Own a snapshot in the command instead of waiting for
+    // the render thread: Present() may be the caller that must enqueue the
+    // next BeginCommandList, so a synchronous completion wait can deadlock.
+    std::unique_ptr<uint8_t[]> snapshot;
+    if (g_isMali)
+    {
+        snapshot = std::make_unique<uint8_t[]>(slicePitch);
+        memcpy(snapshot.get(), texture->mappedMemory, slicePitch);
+    }
+
     RenderCommand cmd;
     cmd.type = RenderCommandType::UnlockTextureRect;
     cmd.unlockTextureRect.texture = texture;
-    cmd.unlockTextureRect.completion = g_isMali ? &completion : nullptr;
+    cmd.unlockTextureRect.completion = nullptr;
+    cmd.unlockTextureRect.snapshot = snapshot.release();
+    cmd.unlockTextureRect.snapshotSize = slicePitch;
     g_renderQueue.enqueue(cmd);
-
-    if (g_isMali)
-        completion.wait(false, std::memory_order_acquire);
 }
 
 static void QueueMaliTextureUpload(
@@ -3800,7 +3844,6 @@ static void QueueMaliTextureUpload(
     RenderFormat format,
     std::vector<MaliTextureUploadSlice> slices)
 {
-    std::atomic<bool> completion{false};
     BeginMaliTextureUpload(texture);
 
     auto upload = std::make_unique<MaliTextureUpload>();
@@ -3810,18 +3853,16 @@ static void QueueMaliTextureUpload(
     upload->nativeGeneration = texture->texture != nullptr ? texture->texture->generation : 0;
     upload->format = format;
     upload->slices = std::move(slices);
-    upload->completion = &completion;
 
     RenderCommand cmd;
     cmd.type = RenderCommandType::UploadTexture;
     cmd.uploadTexture.upload = upload.release();
     g_renderQueue.enqueue(cmd);
 
-    // The render thread owns command-list recording. Waiting here only means
-    // that the copy has been recorded into the current graphics list; it does
-    // not wait for the guest thread to submit that list, so a present-capable
-    // guest thread cannot deadlock waiting for its own Present.
-    completion.wait(false, std::memory_order_acquire);
+    // Do not wait here. The render thread may have already closed the current
+    // command list and be waiting for this caller to finish Present() before
+    // it can begin the next one. The upload buffer and in-flight map keep the
+    // command's native resources alive until the deferred command is replayed.
 }
 
 static void ProcUploadTexture(const RenderCommand& cmd)
@@ -3846,8 +3887,6 @@ static void ProcUploadTexture(const RenderCommand& cmd)
         // The owning guest resource was replaced before this command reached
         // the render thread.  Do not let a stale image pointer reach Vulkan.
         EndMaliTextureUpload(upload->guestTexture);
-        upload->completion->store(true, std::memory_order_release);
-        upload->completion->notify_one();
         return;
     }
 
@@ -3877,8 +3916,6 @@ static void ProcUploadTexture(const RenderCommand& cmd)
     g_tempBuffers[g_frame].emplace_back(std::move(upload->buffer));
 
     EndMaliTextureUpload(upload->guestTexture);
-    upload->completion->store(true, std::memory_order_release);
-    upload->completion->notify_one();
 }
 
 static void ProcUnlockTextureRect(const RenderCommand& cmd)
@@ -3899,7 +3936,16 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
     uint32_t slicePitch = pitch * ComputeTextureRowCount(args.texture);
 
     auto allocation = g_uploadAllocators[g_frame].allocate(slicePitch, g_uploadPlacementAlignment);
-    memcpy(allocation.memory, args.texture->mappedMemory, slicePitch);
+    const void* source = args.snapshot != nullptr ? args.snapshot : args.texture->mappedMemory;
+    if (args.snapshot != nullptr && args.snapshotSize < slicePitch)
+    {
+        delete[] args.snapshot;
+        LOGF_WARNING("Skipping undersized Mali texture unlock snapshot: {} bytes for {} required.",
+            args.snapshotSize, slicePitch);
+        return;
+    }
+    memcpy(allocation.memory, source, slicePitch);
+    std::unique_ptr<uint8_t[]> snapshot(args.snapshot);
 
     const uint32_t blockWidth = RenderFormatBlockWidth(args.texture->format);
     const uint32_t rowWidth = (pitch / RenderFormatSize(args.texture->format)) * blockWidth;
@@ -3910,11 +3956,6 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
         RenderTextureBarrier(args.texture->texture, RenderTextureLayout::SHADER_READ));
     args.texture->layout = RenderTextureLayout::SHADER_READ;
 
-    if (args.completion != nullptr)
-    {
-        args.completion->store(true, std::memory_order_release);
-        args.completion->notify_one();
-    }
 }
 
 static void* LockBuffer(GuestBuffer* buffer, uint32_t flags)
@@ -3952,8 +3993,12 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
     if (g_isMali)
     {
         // The guest reuses its CPU lock buffer as soon as Unlock returns.
-        // Snapshot it on the render thread before acknowledging the unlock;
-        // the GPU upload itself remains deferred to the draw boundary.
+        // Snapshot it on the guest thread; this path performs no Vulkan work
+        // and therefore cannot race a Present/BeginCommandList boundary.
+        if (buffer->lockedReadOnly)
+            return;
+
+        std::lock_guard snapshotLock(buffer->maliGuestSnapshotMutex);
         if (!buffer->maliGuestSnapshot ||
             buffer->maliGuestSnapshotValid == false)
         {
@@ -4052,13 +4097,10 @@ static void UnlockVertexBuffer(GuestBuffer* buffer)
         return;
     }
 
-    std::atomic<bool> completion{false};
-    RenderCommand cmd;
-    cmd.type = RenderCommandType::UnlockBuffer32;
-    cmd.unlockBuffer.buffer = buffer;
-    cmd.unlockBuffer.completion = &completion;
-    g_renderQueue.enqueue(cmd);
-    completion.wait(false, std::memory_order_acquire);
+    if (buffer->lockedReadOnly)
+        return;
+
+    UnlockBuffer<uint32_t>(buffer, false);
 }
 
 static void GetVertexBufferDesc(GuestBuffer* buffer, GuestBufferDesc* desc) 
@@ -4082,17 +4124,16 @@ static void UnlockIndexBuffer(GuestBuffer* buffer)
         return;
     }
 
-    // Keep index uploads on the same serialized render-thread path as vertex
-    // uploads.  The command type preserves the guest index width for the
-    // endian conversion performed by ProcUnlockBuffer16/32.
-    std::atomic<bool> completion{false};
-    RenderCommand cmd;
-    cmd.type = buffer->guestFormat == D3DFMT_INDEX32 ?
-        RenderCommandType::UnlockBuffer32 : RenderCommandType::UnlockBuffer16;
-    cmd.unlockBuffer.buffer = buffer;
-    cmd.unlockBuffer.completion = &completion;
-    g_renderQueue.enqueue(cmd);
-    completion.wait(false, std::memory_order_acquire);
+    // Mali's path only snapshots the guest bytes and does not record Vulkan
+    // commands. Do this directly so an unlock cannot wait for a render queue
+    // command that is deferred until the next frame begins.
+    if (buffer->lockedReadOnly)
+        return;
+
+    if (buffer->guestFormat == D3DFMT_INDEX32)
+        UnlockBuffer<uint32_t>(buffer, false);
+    else
+        UnlockBuffer<uint16_t>(buffer, false);
 }
 
 static void GetIndexBufferDesc(GuestBuffer* buffer, GuestBufferDesc* desc)
@@ -4525,6 +4566,9 @@ static void ProcDrawImGui(const RenderCommand& cmd)
     commandList->setGraphicsDescriptorSet(CurrentSamplerDescriptorSet(), 1);
 
     auto& drawData = *ImGui::GetDrawData();
+    if (drawData.DisplaySize.x <= 0.0f || drawData.DisplaySize.y <= 0.0f)
+        return;
+
     commandList->setViewports(RenderViewport(drawData.DisplayPos.x, drawData.DisplayPos.y, drawData.DisplaySize.x, drawData.DisplaySize.y));
 
     ImGuiPushConstants pushConstants{};
@@ -4550,6 +4594,7 @@ static void ProcDrawImGui(const RenderCommand& cmd)
         };
 
     ImRect clipRect{};
+    bool hasClipRect = false;
 
     for (int i = 0; i < drawData.CmdListsCount; i++)
     {
@@ -4612,7 +4657,16 @@ static void ProcDrawImGui(const RenderCommand& cmd)
             }
             else
             {
-                if (drawCmd.ClipRect.z <= drawCmd.ClipRect.x || drawCmd.ClipRect.w <= drawCmd.ClipRect.y)
+                // ImGui's background/foreground lists can carry an effectively
+                // unbounded clip rectangle.  Converting that directly to a
+                // Vulkan VkRect2D overflows on some Android Mali drivers and
+                // leaves subsequent overlay primitives clipped away.  Clamp in
+                // float space first, then round outward to integer pixels.
+                const float clipMinX = std::clamp(drawCmd.ClipRect.x, 0.0f, drawData.DisplaySize.x);
+                const float clipMinY = std::clamp(drawCmd.ClipRect.y, 0.0f, drawData.DisplaySize.y);
+                const float clipMaxX = std::clamp(drawCmd.ClipRect.z, 0.0f, drawData.DisplaySize.x);
+                const float clipMaxY = std::clamp(drawCmd.ClipRect.w, 0.0f, drawData.DisplaySize.y);
+                if (clipMaxX <= clipMinX || clipMaxY <= clipMinY)
                     continue;
 
                 auto texture = reinterpret_cast<GuestTexture*>(drawCmd.TextureId);
@@ -4632,8 +4686,12 @@ static void ProcDrawImGui(const RenderCommand& cmd)
                     if (texture == g_imFontTexture.get())
                         descriptorIndex |= 0x80000000;
 
-                    setPushConstants(&pushConstants.texture2DDescriptorIndex, &descriptorIndex, sizeof(descriptorIndex));
                 }
+                // Untextured primitives must explicitly select the null
+                // texture. Otherwise a preceding font draw can leave the
+                // font descriptor in the push constants and make Mali sample
+                // stale state for a later overlay primitive.
+                setPushConstants(&pushConstants.texture2DDescriptorIndex, &descriptorIndex, sizeof(descriptorIndex));
 
                 if (pushConstantRangeMin < pushConstantRangeMax)
                 {
@@ -4642,10 +4700,18 @@ static void ProcDrawImGui(const RenderCommand& cmd)
                     pushConstantRangeMax = 0;
                 }
 
-                if (memcmp(&clipRect, &drawCmd.ClipRect, sizeof(clipRect)) != 0)
+                ImRect safeClipRect{};
+                safeClipRect.Min = { std::floor(clipMinX), std::floor(clipMinY) };
+                safeClipRect.Max = { std::ceil(clipMaxX), std::ceil(clipMaxY) };
+                if (!hasClipRect || memcmp(&clipRect, &safeClipRect, sizeof(clipRect)) != 0)
                 {
-                    commandList->setScissors(RenderRect(int32_t(drawCmd.ClipRect.x), int32_t(drawCmd.ClipRect.y), int32_t(drawCmd.ClipRect.z), int32_t(drawCmd.ClipRect.w)));
-                    clipRect = drawCmd.ClipRect;
+                    commandList->setScissors(RenderRect(
+                        int32_t(safeClipRect.Min.x),
+                        int32_t(safeClipRect.Min.y),
+                        int32_t(safeClipRect.Max.x),
+                        int32_t(safeClipRect.Max.y)));
+                    clipRect = safeClipRect;
+                    hasClipRect = true;
                 }
 
                 commandList->drawIndexedInstanced(drawCmd.ElemCount, 1, drawCmd.IdxOffset, drawCmd.VtxOffset, 0);

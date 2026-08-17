@@ -13,3 +13,4 @@
 - [Android present threading](android-present-threading.md) — loading and gameplay can present concurrently during startup, so the whole present transaction must be serialized.
 - [Mali Vulkan object creation](mali-object-creation.md) — serialize backend Vulkan object construction when Android resource loading overlaps render-thread pipeline compilation.
 - [Mali command-buffer boundaries](mali-command-buffer-boundaries.md) — defer uploads that cross Present/BeginCommandList boundaries until the graphics command buffer is open.
+- [Android file-load hooks](android-file-load-hooks.md) — file data length is not a safe bound for the guest path pointer; diagnostic path formatting must not read it.
