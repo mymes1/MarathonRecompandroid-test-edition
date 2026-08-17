@@ -1202,6 +1202,8 @@ static void DestructTempResources()
             buffer->maliFrameSerial = 0;
             buffer->maliFrameSnapshotGeneration = 0;
             buffer->maliFrameElementSize = 0;
+            for (auto& cache : buffer->maliVertexFrameCache)
+                cache = {};
 
             buffer->~GuestBuffer();
             break;
@@ -1472,6 +1474,11 @@ static RenderBufferReference UploadMaliGuestVertexBuffer(
     if (source == nullptr)
     {
         LOGF_WARNING("Ignoring Mali vertex upload with no source memory.", "");
+        // Do not let a failed upload satisfy the fast path on a later draw
+        // with the same frame/declaration parameters. The cached reference
+        // points into a previous upload allocation and is no longer valid
+        // when the guest source is unavailable.
+        cache = {};
         buffer->maliFrameReference = {};
         buffer->maliFrameSerial = 0;
         return {};
