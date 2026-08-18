@@ -1815,6 +1815,8 @@ struct RenderCommand
         struct
         {
             GuestTexture* texture;
+            RenderTexture* nativeTexture;
+            uint64_t nativeGeneration;
             std::atomic<bool>* completion;
             // Mali unlocks are copied before returning to the guest thread.
             // The render command owns this snapshot so it remains valid if
@@ -3839,9 +3841,14 @@ static void UnlockTextureRect(GuestTexture* texture)
     RenderCommand cmd;
     cmd.type = RenderCommandType::UnlockTextureRect;
     cmd.unlockTextureRect.texture = texture;
+    cmd.unlockTextureRect.nativeTexture = texture->texture;
+    cmd.unlockTextureRect.nativeGeneration =
+        texture->texture != nullptr ? texture->texture->generation : 0;
     cmd.unlockTextureRect.completion = nullptr;
     cmd.unlockTextureRect.snapshot = snapshot.release();
     cmd.unlockTextureRect.snapshotSize = slicePitch;
+    if (g_isMali)
+        BeginMaliTextureUpload(texture);
     g_renderQueue.enqueue(cmd);
 }
 
@@ -3935,6 +3942,20 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
     }
 
     const auto& args = cmd.unlockTextureRect;
+    const bool nativeTextureStillMatches =
+        args.texture != nullptr &&
+        args.texture->texture == args.nativeTexture &&
+        args.nativeTexture != nullptr &&
+        args.nativeTexture->generation == args.nativeGeneration;
+
+    if (g_isMali && !nativeTextureStillMatches)
+    {
+        // The guest object can be replaced while the unlock is waiting for the
+        // next command buffer. Do not submit a copy to a stale VkImage.
+        delete[] args.snapshot;
+        EndMaliTextureUpload(args.texture);
+        return;
+    }
 
     AddBarrier(args.texture, RenderTextureLayout::COPY_DEST);
     FlushBarriers(RenderBarrierStage::COPY);
@@ -3949,6 +3970,8 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
         delete[] args.snapshot;
         LOGF_WARNING("Skipping undersized Mali texture unlock snapshot: {} bytes for {} required.",
             args.snapshotSize, slicePitch);
+        if (g_isMali)
+            EndMaliTextureUpload(args.texture);
         return;
     }
     memcpy(allocation.memory, source, slicePitch);
@@ -3963,6 +3986,8 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
         RenderTextureBarrier(args.texture->texture, RenderTextureLayout::SHADER_READ));
     args.texture->layout = RenderTextureLayout::SHADER_READ;
 
+    if (g_isMali)
+        EndMaliTextureUpload(args.texture);
 }
 
 static void* LockBuffer(GuestBuffer* buffer, uint32_t flags)

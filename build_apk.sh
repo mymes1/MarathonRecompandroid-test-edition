@@ -18,7 +18,8 @@ if [ -f "$so" ]; then
     cp -f "$so" "$jni/libmain.so"
     echo "Copied $so -> $jni/libmain.so"
 else
-    echo "WARNING: no freshly built libmain.so in out/build/android-arm64, packaging the existing jniLibs copy." >&2
+    echo "ERROR: no freshly built libmain.so in out/build/android-arm64; refusing to package a stale jniLibs copy." >&2
+    exit 1
 fi
 
 # CMake places these hooks next to libmain.so. Package the fresh copies when

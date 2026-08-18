@@ -14,3 +14,9 @@ Vulkan texture wrapper generations must come from a process-wide monotonic sourc
 **Why:** Swapchain textures live in movable vectors, and address reuse can make a stale deferred barrier appear to target a newly assigned image.
 
 **How to apply:** Capture generation when queuing a barrier and reject it unless both the wrapper is live and its generation still matches.
+
+Queued Mali texture unlocks need the same native-wrapper generation check and in-flight ownership as uploads.
+
+**Why:** An unlock can cross a Present/BeginCommandList boundary while the guest texture is replaced or released; a raw pointer alone can otherwise submit a copy to a stale image or outlive its guest wrapper.
+
+**How to apply:** Capture the native wrapper and generation when queuing the unlock, defer destruction while it is pending, and release the in-flight ownership on every completion or rejection path.
