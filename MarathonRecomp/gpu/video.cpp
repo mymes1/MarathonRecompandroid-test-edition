@@ -7639,6 +7639,13 @@ static void ProcSetIndices(const RenderCommand& cmd)
         {
             LOGF_WARNING("Ignoring malformed index buffer: {} bytes is not a multiple of {}.",
                 args.buffer->dataSize, elementSize);
+            // Do not leave the previous index allocation bound after rejecting
+            // this buffer. Reusing stale indices on Mali can turn a harmless
+            // malformed submission into stretched triangles or a corrupted
+            // frame on the next draw.
+            g_indexBuffer = nullptr;
+            g_indexBufferView = RenderIndexBufferView({}, 0, RenderFormat::R16_UINT);
+            g_dirtyStates.indices = true;
             return;
         }
     }
