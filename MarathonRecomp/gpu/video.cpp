@@ -1447,6 +1447,10 @@ static RenderBufferReference UploadMaliGuestVertexBuffer(
     {
         LOGF_WARNING("Ignoring empty or unstrided Mali vertex buffer.", "");
         cache = {};
+        buffer->maliFrameReference = {};
+        buffer->maliFrameSerial = 0;
+        buffer->maliFrameSnapshotGeneration = 0;
+        buffer->maliFrameElementSize = 0;
         return {};
     }
 
@@ -1465,6 +1469,19 @@ static RenderBufferReference UploadMaliGuestVertexBuffer(
         LOGF_WARNING("Ignoring Mali vertex stream offset {} beyond buffer size {}.",
             streamOffset, buffer->dataSize);
         cache = {};
+        return {};
+    }
+
+    if (buffer->dataSize - streamOffset < stride)
+    {
+        LOGF_WARNING(
+            "Ignoring Mali vertex stream with {} bytes after offset; {} required for one vertex.",
+            buffer->dataSize - streamOffset, stride);
+        cache = {};
+        buffer->maliFrameReference = {};
+        buffer->maliFrameSerial = 0;
+        buffer->maliFrameSnapshotGeneration = 0;
+        buffer->maliFrameElementSize = 0;
         return {};
     }
 
