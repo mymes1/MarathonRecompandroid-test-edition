@@ -1558,7 +1558,12 @@ static void RefreshMaliActiveBufferViews()
         GuestBuffer* buffer = g_vertexBuffers[slot];
         if (buffer == nullptr)
         {
-            if (g_vertexBufferViews[slot].buffer.ref != nullptr)
+            const bool dirty =
+                g_vertexBufferViews[slot].buffer.ref != nullptr ||
+                g_vertexBufferViews[slot].buffer.offset != 0 ||
+                g_vertexBufferViews[slot].size != 0 ||
+                g_inputSlots[slot].stride != 0;
+            if (dirty)
             {
                 g_vertexBufferViews[slot] = {};
                 g_inputSlots[slot].stride = 0;
@@ -1572,9 +1577,17 @@ static void RefreshMaliActiveBufferViews()
 
         const RenderBufferReference reference =
             GetMaliVertexReference(buffer, slot, g_vertexBufferOffsets[slot]);
-        if (g_vertexBufferViews[slot].buffer != reference)
+        const uint32_t size = g_vertexBufferOffsets[slot] <= buffer->dataSize
+            ? buffer->dataSize - g_vertexBufferOffsets[slot]
+            : 0;
+        const uint32_t stride = g_pipelineState.vertexStrides[slot];
+        if (g_vertexBufferViews[slot].buffer != reference ||
+            g_vertexBufferViews[slot].size != size ||
+            g_inputSlots[slot].stride != stride)
         {
             g_vertexBufferViews[slot].buffer = reference;
+            g_vertexBufferViews[slot].size = size;
+            g_inputSlots[slot].stride = stride;
             g_dirtyStates.vertexStreamFirst =
                 std::min<uint8_t>(g_dirtyStates.vertexStreamFirst, slot);
             g_dirtyStates.vertexStreamLast =
@@ -1597,7 +1610,10 @@ static void RefreshMaliActiveBufferViews()
             g_dirtyStates.indices = true;
         }
     }
-    else if (g_indexBufferView.buffer.ref != nullptr)
+    else if (g_indexBufferView.buffer.ref != nullptr ||
+             g_indexBufferView.buffer.offset != 0 ||
+             g_indexBufferView.size != 0 ||
+             g_indexBufferView.format != RenderFormat::R16_UINT)
     {
         g_indexBufferView = RenderIndexBufferView({}, 0, RenderFormat::R16_UINT);
         g_dirtyStates.indices = true;
