@@ -595,6 +595,11 @@ void TouchControls::Draw()
     auto* dl = ImGui::GetForegroundDrawList();
     ImFont* font = ImGui::GetFont();
     const float fontPx = vh * 0.030f;
+    // Do not inherit a stale/empty clip rectangle from another ImGui list.
+    // Android Mali drivers are particularly unforgiving when a dynamic
+    // scissor is changed between overlay batches: input still works, but the
+    // foreground controls can be clipped out completely.
+    dl->PushClipRect({ 0.0f, 0.0f }, { vw, vh }, false);
 
     auto tapBox = [&](ImVec2 c, float hw, float hh, const char* label, bool accent)
     {
@@ -669,6 +674,7 @@ void TouchControls::Draw()
 
             g_state = st;
             g_prevIds = std::move(curIds);
+            dl->PopClipRect();
             return;
         }
 
@@ -1057,4 +1063,5 @@ void TouchControls::Draw()
         SaveLayout();
 
     g_prevIds = std::move(curIds);
+    dl->PopClipRect();
 }
