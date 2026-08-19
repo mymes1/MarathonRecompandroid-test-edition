@@ -70,13 +70,14 @@ namespace
     constexpr float SCALE_MIN = 0.60f;
     constexpr float SCALE_MAX = 1.60f;
 
-    // Mali's transparent framebuffer blending can make a low-alpha black
-    // overlay disappear against dark gameplay or a partially corrupted frame.
-    // Keep the controls readable without making them opaque: the backing is
-    // tinted, outlined, and the glyph gets a small shadow below.
-    constexpr int CONTROL_IDLE_ALPHA = 150;
-    constexpr int CONTROL_PRESSED_ALPHA = 220;
-    constexpr int CONTROL_OUTLINE_ALPHA = 225;
+    // Android 15's Mali-G57 compositor can effectively discard very
+    // translucent ImGui primitives when the game framebuffer is itself
+    // blended. The touch hit testing still works in that case, but the
+    // controls appear to vanish. Keep the idle backing strong enough to
+    // survive that path while retaining a translucent overlay appearance.
+    constexpr int CONTROL_IDLE_ALPHA = 225;
+    constexpr int CONTROL_PRESSED_ALPHA = 255;
+    constexpr int CONTROL_OUTLINE_ALPHA = 255;
     constexpr int CONTROL_GLYPH_ALPHA = 255;
 
     struct Layout
