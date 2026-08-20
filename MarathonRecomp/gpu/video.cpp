@@ -6930,7 +6930,9 @@ static void ProcDrawPrimitive(const RenderCommand& cmd)
 
     const uint32_t stride = g_inputSlots[0].stride;
     const uint64_t endByte = (uint64_t(args.startVertex) + vertexCount) * stride;
-    if (stride == 0 || endByte > g_vertexBufferViews[0].size)
+    if (stride == 0 ||
+        vertexCount > std::numeric_limits<uint32_t>::max() ||
+        endByte > g_vertexBufferViews[0].size)
     {
         LOGF_WARNING("Skipping out-of-range non-indexed draw: start {}, count {}, stride {}, view {}.",
             args.startVertex, vertexCount, stride, g_vertexBufferViews[0].size);
@@ -6938,7 +6940,7 @@ static void ProcDrawPrimitive(const RenderCommand& cmd)
     }
 
     auto& commandList = g_commandLists[g_frame];
-    commandList->drawInstanced(args.primitiveCount, 1, args.startVertex, 0);
+    commandList->drawInstanced(static_cast<uint32_t>(vertexCount), 1, args.startVertex, 0);
 }
 
 static void DrawIndexedPrimitive(GuestDevice* device, uint32_t primitiveType, int32_t baseVertexIndex, uint32_t startIndex, uint32_t primCount)
@@ -6981,7 +6983,12 @@ static void ProcDrawIndexedPrimitive(const RenderCommand& cmd)
         return;
     }
 
-    g_commandLists[g_frame]->drawIndexedInstanced(args.primCount, 1, args.startIndex, args.baseVertexIndex, 0);
+    // The render interface and Vulkan both take an index count, while the
+    // guest API supplies a primitive count. The validation above already
+    // expands the primitive count for the selected topology; use that same
+    // expanded value for the actual draw.
+    g_commandLists[g_frame]->drawIndexedInstanced(static_cast<uint32_t>(indexCount), 1,
+        args.startIndex, args.baseVertexIndex, 0);
 }
 
 static void DrawPrimitiveUP(GuestDevice* device, uint32_t primitiveType, uint32_t primitiveCount, void* vertexStreamZeroData, uint32_t vertexStreamZeroStride)
