@@ -2,7 +2,7 @@ name: build-android-apk
 
 on:
   push:
-    branches: ["arena/019fc126-marathonrecomp"]
+    branches: ["arena/**"]
   workflow_dispatch:
     inputs:
       build_files_url:
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BUILD_FILES_URL: ${{ inputs.build_files_url || vars.BUILD_FILES_URL || '' }}
+  BUILD_FILES_URL: ${{ github.event.inputs.build_files_url || vars.BUILD_FILES_URL || '' }}
   NDK_VERSION: "29.0.14206865"
   # Force vcpkg to use system cmake/ninja instead of downloading its own
   # binaries, which can fail with "Could not find CMAKE_ROOT" on GitHub Actions.
@@ -46,20 +46,33 @@ jobs:
       # triplet.
       - name: Checkout submodules
         run: |
+          submodules=(
+            tools/XenonRecomp tools/XenosRecomp
+            thirdparty/SDL thirdparty/SDL_mixer thirdparty/msdf-atlas-gen
+            thirdparty/stb thirdparty/concurrentqueue thirdparty/magic_enum
+            thirdparty/unordered_dense thirdparty/json thirdparty/ddspp
+            thirdparty/imgui thirdparty/implot thirdparty/vcpkg
+            MarathonRecompResources
+          )
+
           for attempt in 1 2 3; do
-            if git submodule update --init --depth 1 --recursive \
-                tools/XenonRecomp tools/XenosRecomp \
-                thirdparty/SDL thirdparty/SDL_mixer thirdparty/msdf-atlas-gen \
-                thirdparty/stb thirdparty/concurrentqueue thirdparty/magic_enum \
-                thirdparty/unordered_dense thirdparty/json thirdparty/ddspp \
-                thirdparty/imgui thirdparty/implot thirdparty/vcpkg \
-                MarathonRecompResources; then
-              echo "Submodules initialized (attempt $attempt)"
+            if git submodule update --init --depth 1 --recursive "${submodules[@]}"; then
+              echo "Submodules initialized shallowly (attempt $attempt)"
               break
             fi
-            echo "Submodule fetch failed (attempt $attempt/3), retrying..."
+            echo "Shallow submodule fetch failed (attempt $attempt/3), retrying..."
             sleep 10
           done
+
+          # Some pinned submodule commits are not reachable from a shallow clone.
+          # Fall back to a full fetch once instead of leaving the build flaky.
+          if git submodule status "${submodules[@]}" | grep -q '^-'; then
+            echo "Falling back to full submodule checkout"
+            git submodule update --init --recursive "${submodules[@]}"
+          else
+            echo "Submodules ready"
+          fi
+
           git submodule status | sed 's/^/  /'
 
       # ── dxc-bin (HLSL -> DXIL/SPIR-V compiler binaries) ────────────────────
@@ -89,6 +102,8 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
+            build-essential \
+            pkg-config \
             ninja-build \
             cmake \
             clang \
@@ -125,7 +140,7 @@ jobs:
           printf '\nmips-android-sysimage-license' > "$sdk_root/licenses/mips-android-sysimage-license"
 
           "$sdkmanager_bin" --install \
-            "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}" >/dev/null
+            "platforms;android-35" "build-tools;35.0.0" "ndk;${NDK_VERSION}" >/dev/null
           echo "ANDROID_NDK_HOME=$sdk_root/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
           echo "SDK + NDK installed"
 
