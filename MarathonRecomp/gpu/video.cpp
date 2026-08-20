@@ -858,53 +858,6 @@ static UploadAllocator g_uploadAllocators[NUM_FRAMES];
 static uint64_t g_frameUploadSerial[NUM_FRAMES]{};
 static uint64_t g_nextMaliUploadSerial = 0;
 
-struct IntermediaryUploadAllocator
-{
-    static constexpr size_t SIZE = 16 * 1024 * 1024;
-
-    std::vector<std::unique_ptr<uint8_t[]>> buffers;
-    uint32_t index = 0;
-    uint32_t offset = 0;
-
-    uint8_t* allocate(uint32_t size)
-    {
-        assert(size <= SIZE);
-
-        if (offset + size > SIZE)
-        {
-            ++index;
-            offset = 0;
-        }
-
-        if (buffers.size() <= index)
-            buffers.resize(index + 1);
-
-        auto& buffer = buffers[index];
-        if (buffer == nullptr)
-            buffer = std::make_unique_for_overwrite<uint8_t[]>(SIZE);
-
-        auto result = buffer.get() + offset;
-        offset += ((size + 0xF) & ~0xF);
-
-        return result;
-    }
-
-    uint8_t* allocate(const void* memory, uint32_t size)
-    {
-        auto result = allocate(size);
-        memcpy(result, memory, size);
-        return result;
-    }
-
-    void reset()
-    {
-        index = 0;
-        offset = 0;
-    }
-};
-
-static IntermediaryUploadAllocator g_intermediaryUploadAllocator;
-
 // These containers hold raw guest/native resource pointers while commands are
 // being accumulated on the render thread.  They must be declared before the
 // deferred-destruction pass because that pass has to remove a resource from
@@ -931,7 +884,7 @@ struct PrimitiveIndexData
     RenderBufferReference indexBuffer;
     uint32_t currentIndexCount = 0;
 
-    uint32_t prepare(uint32_t guestPrimCount)
+    uint32_t prepare(uint32_t guestVertexCount)
     {
         uint32_t primCount;
         uint32_t indexCountPerPrimitive;
@@ -939,15 +892,15 @@ struct PrimitiveIndexData
         switch (PrimitiveType)
         {
         case D3DPT_TRIANGLEFAN:
-            if (guestPrimCount < 3)
+            if (guestVertexCount < 3)
                 return 0;
-            primCount = guestPrimCount - 2;
+            primCount = guestVertexCount - 2;
             indexCountPerPrimitive = 3; 
             break;
         case D3DPT_QUADLIST:
-            if (guestPrimCount < 4)
+            if (guestVertexCount < 4)
                 return 0;
-            primCount = guestPrimCount / 4;
+            primCount = guestVertexCount / 4;
             indexCountPerPrimitive = 6;
             break;
         default:
@@ -960,8 +913,8 @@ struct PrimitiveIndexData
                 ? primCount > std::numeric_limits<uint16_t>::max() - 1
                 : primCount > (std::numeric_limits<uint16_t>::max() + 1u) / 4))
         {
-            LOGF_WARNING("Ignoring oversized generated index draw with {} primitives.",
-                guestPrimCount);
+            LOGF_WARNING("Ignoring oversized generated index draw with {} vertices.",
+                guestVertexCount);
             return 0;
         }
 
@@ -1964,7 +1917,10 @@ struct RenderCommand
             uint32_t primitiveType;
             int32_t baseVertexIndex; 
             uint32_t startIndex;
-            uint32_t primCount;
+            // The guest wrapper passes an index count, not a D3D primitive
+            // count. Expanding it again makes valid meshes look out of range
+            // and drops most world/title geometry.
+            uint32_t indexCount;
         } drawIndexedPrimitive;
 
         struct 
@@ -2017,6 +1973,38 @@ struct RenderCommand
             uint32_t index;
         } setConditionalRendering;
     };
+
+    // Optional per-command payload copied from guest memory.  Do not point
+    // render commands at a frame-reused scratch allocator: Android startup can
+    // enqueue rendering work from multiple guest threads while Present is
+    // rotating frame state, and reuse can turn constants/UP vertices into the
+    // giant stretched triangles seen on Mali.
+    uint8_t* ownedMemory = nullptr;
+};
+
+static uint8_t* AllocateRenderCommandMemory(RenderCommand& cmd, const void* memory, uint32_t size)
+{
+    if (size == 0)
+        return nullptr;
+
+    auto* copy = new uint8_t[size];
+    memcpy(copy, memory, size);
+    cmd.ownedMemory = copy;
+    return copy;
+}
+
+static void ReleaseRenderCommandMemory(const RenderCommand& cmd)
+{
+    delete[] cmd.ownedMemory;
+}
+
+struct RenderCommandMemoryScope
+{
+    const RenderCommand& cmd;
+    ~RenderCommandMemoryScope()
+    {
+        ReleaseRenderCommandMemory(cmd);
+    }
 };
 
 static moodycamel::BlockingConcurrentQueue<RenderCommand> g_renderQueue;
@@ -2985,6 +2973,51 @@ static void ApplyLowEndDefaults()
     }
 }
 
+#ifdef __ANDROID__
+template<typename T>
+static void ForceMaliConfig(ConfigDef<T>& configDef, T value, bool& changed)
+{
+    if (configDef.Value != value)
+    {
+        configDef = value;
+        changed = true;
+    }
+
+    configDef.DefaultValue = value;
+}
+
+static void ApplyMaliRuntimeOverrides()
+{
+    bool changed = false;
+
+    // These options are not just performance preferences on SM-X110/Mali-G57:
+    // saved desktop/Adreno values can re-enable render paths that are disabled
+    // in the Mali compatibility profile, causing broken framebuffers, dropped
+    // geometry, or driver faults after the title screen.  Force the known-safe
+    // tablet profile every launch.
+    ForceMaliConfig(Config::FPS, 60, changed);
+    ForceMaliConfig(Config::AntiAliasing, EAntiAliasing::Off, changed);
+    ForceMaliConfig(Config::TransparencyAntiAliasing, false, changed);
+    ForceMaliConfig(Config::ShadowResolution, EShadowResolution::x512, changed);
+    ForceMaliConfig(Config::ReflectionResolution, EReflectionResolution::Eighth, changed);
+    ForceMaliConfig(Config::AnisotropicFiltering, uint32_t(1), changed);
+    ForceMaliConfig(Config::RadialBlur, ERadialBlur::Off, changed);
+
+    // Keep resolution within the tested Mali path.  The app still allows lower
+    // values, but old config files from desktop/Adreno builds must not start the
+    // tablet at 100%+ resolution and exhaust the small memory budget.
+    if (Config::ResolutionScale.Value > 0.5f)
+    {
+        Config::ResolutionScale = 0.25f;
+        changed = true;
+    }
+    Config::ResolutionScale.DefaultValue = 0.25f;
+
+    if (changed)
+        Config::Save();
+}
+#endif
+
 bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
 {
     for (uint32_t i = 0; i < 16; i++)
@@ -3229,6 +3262,10 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
             g_capabilities.resolveModes = false;
             g_capabilities.resolveRegion = false;
             g_capabilities.dynamicDepthBias = false;
+            // Native VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN is another weak spot on
+            // this Mali stack; emulate fans with generated triangle-list indices
+            // so one bad fan cannot turn into screen-sized wedges.
+            g_capabilities.triangleFan = false;
 
             // The conditional survey adds a storage-buffer descriptor set to the
             // main pipeline layout alongside UPDATE_AFTER_BIND variable-count
@@ -3251,6 +3288,8 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
             g_uploadPitchAlignment     = 1;
             g_uploadPlacementAlignment = 4;
             LOG("Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.");
+
+            ApplyMaliRuntimeOverrides();
         }
     }
 
@@ -3301,13 +3340,27 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     const RenderSampleCounts depthSampleCount  = g_device->getSampleCountsSupported(RenderFormat::D32_FLOAT);
     const RenderSampleCounts commonSampleCount = colourSampleCount & depthSampleCount;
 
-    // Disable specific MSAA levels if they are not supported.
-    if ((commonSampleCount & RenderSampleCount::COUNT_2) == 0)
+    // Disable specific MSAA levels if they are not supported.  On Mali-G57 we
+    // disable all MSAA even if the driver advertises sample counts: the resolve
+    // shaders and multisampled render-target path are not part of the safe
+    // Android compatibility profile.
+#if defined(__ANDROID__)
+    if (g_isMali)
+    {
         Config::AntiAliasing.InaccessibleValues.emplace(EAntiAliasing::MSAA2x);
-    if ((commonSampleCount & RenderSampleCount::COUNT_4) == 0)
         Config::AntiAliasing.InaccessibleValues.emplace(EAntiAliasing::MSAA4x);
-    if ((commonSampleCount & RenderSampleCount::COUNT_8) == 0)
         Config::AntiAliasing.InaccessibleValues.emplace(EAntiAliasing::MSAA8x);
+    }
+    else
+#endif
+    {
+        if ((commonSampleCount & RenderSampleCount::COUNT_2) == 0)
+            Config::AntiAliasing.InaccessibleValues.emplace(EAntiAliasing::MSAA2x);
+        if ((commonSampleCount & RenderSampleCount::COUNT_4) == 0)
+            Config::AntiAliasing.InaccessibleValues.emplace(EAntiAliasing::MSAA4x);
+        if ((commonSampleCount & RenderSampleCount::COUNT_8) == 0)
+            Config::AntiAliasing.InaccessibleValues.emplace(EAntiAliasing::MSAA8x);
+    }
 
     // Set Anti-Aliasing to nearest supported level.
     Config::AntiAliasing.SnapToNearestAccessibleValue(false);
@@ -4209,12 +4262,26 @@ static void GetIndexBufferDesc(GuestBuffer* buffer, GuestBufferDesc* desc)
 
 static void GetSurfaceDesc(GuestSurface* surface, GuestSurfaceDesc* desc) 
 {
-    if (surface->width == 0 && surface->height == 0) {
-        LOGF_WARNING("{:p} {:d} {:d} \n", reinterpret_cast<void*>(desc), surface->width, surface->height);
-        __builtin_trap();
+    if (surface == nullptr || desc == nullptr)
+        return;
+
+    uint32_t width = surface->width;
+    uint32_t height = surface->height;
+    if (width == 0 || height == 0)
+    {
+        // Some Android startup/menu paths can briefly query a placeholder
+        // surface while the swapchain is being recreated.  Trapping here turns
+        // a recoverable placeholder into a process crash on SM-X110; return a
+        // minimal valid description instead and let later resize/update calls
+        // publish the real dimensions.
+        LOGF_WARNING("Surface description requested for zero-sized surface {:p}: {}x{}.",
+            static_cast<void*>(surface), width, height);
+        width = std::max(width, 1u);
+        height = std::max(height, 1u);
     }
-    desc->width = surface->width;
-    desc->height = surface->height;
+
+    desc->width = width;
+    desc->height = height;
     desc->format = surface->guestFormat;
     desc->type = 4; // D3DRTYPE_SURFACE
     // desc->multiSampleType = 0;
@@ -4895,7 +4962,6 @@ void Video::Present()
     g_dirtyStates = DirtyStates(true);
     g_uploadAllocators[g_frame].reset();
     g_frameUploadSerial[g_frame] = ++g_nextMaliUploadSerial;
-    g_intermediaryUploadAllocator.reset();
     g_triangleFanIndexData.reset();
     g_quadIndexData.reset();
 
@@ -6605,7 +6671,7 @@ static void FlushRenderStateForMainThread(GuestDevice* device, LocalRenderComman
 
         auto& cmd = queue.enqueue();
         cmd.type = RenderCommandType::SetVertexShaderConstants;
-        cmd.setVertexShaderConstants.memory = g_intermediaryUploadAllocator.allocate(&device->vertexShaderFloatConstants[index], size);
+        cmd.setVertexShaderConstants.memory = AllocateRenderCommandMemory(cmd, &device->vertexShaderFloatConstants[index], size);
         cmd.setVertexShaderConstants.index = index;
         cmd.setVertexShaderConstants.size = size;
 
@@ -6623,7 +6689,7 @@ static void FlushRenderStateForMainThread(GuestDevice* device, LocalRenderComman
 
         auto& cmd = queue.enqueue();
         cmd.type = RenderCommandType::SetPixelShaderConstants;
-        cmd.setPixelShaderConstants.memory = g_intermediaryUploadAllocator.allocate(&device->pixelShaderFloatConstants[index], size);
+        cmd.setPixelShaderConstants.memory = AllocateRenderCommandMemory(cmd, &device->pixelShaderFloatConstants[index], size);
         cmd.setPixelShaderConstants.index = index;
         cmd.setPixelShaderConstants.size = size;
 
@@ -6714,6 +6780,7 @@ static void ProcSetVertexShaderConstants(const RenderCommand& cmd)
     assert((args.index * sizeof(uint32_t) + args.size) <= sizeof(g_vertexShaderConstants));
 
     memcpy(&g_vertexShaderConstants[args.index], args.memory, args.size);
+    ReleaseRenderCommandMemory(cmd);
     g_dirtyStates.vertexShaderConstants = true;
 }
 
@@ -6723,6 +6790,7 @@ static void ProcSetPixelShaderConstants(const RenderCommand& cmd)
     assert((args.index * sizeof(uint32_t) + args.size) <= sizeof(g_pixelShaderConstants));
 
     memcpy(&g_pixelShaderConstants[args.index], args.memory, args.size);
+    ReleaseRenderCommandMemory(cmd);
     g_dirtyStates.pixelShaderConstants = true;
 }
 
@@ -6896,6 +6964,218 @@ static uint64_t PrimitiveVertexCount(uint32_t primitiveType, uint32_t primitiveC
     }
 }
 
+static void WarnSkippedMaliDraw(const char* reason, uint64_t a, uint64_t b, uint64_t c)
+{
+    static uint32_t warningCount = 0;
+    if (warningCount++ < 32)
+        LOGF_WARNING("Skipping Mali draw: {} ({}, {}, {}).", reason, a, b, c);
+}
+
+static bool ValidateMaliVertexRange(uint64_t startVertex, uint64_t vertexCount)
+{
+    if (!g_isMali || vertexCount == 0)
+        return true;
+
+    const GuestVertexDeclaration* declaration = g_pipelineState.vertexDeclaration;
+    if (declaration == nullptr)
+        return true;
+
+    for (uint32_t slot = 0; slot < std::size(g_vertexBufferViews); ++slot)
+    {
+        if (!declaration->vertexStreams[slot])
+            continue;
+
+        const uint32_t stride = g_inputSlots[slot].stride;
+        const uint32_t viewSize = g_vertexBufferViews[slot].size;
+        if (stride == 0 || g_vertexBufferViews[slot].buffer.ref == nullptr)
+        {
+            WarnSkippedMaliDraw("missing vertex stream", slot, stride, viewSize);
+            return false;
+        }
+
+        const uint64_t vertexCapacity = viewSize / stride;
+        if (startVertex > vertexCapacity || vertexCount > vertexCapacity - startVertex)
+        {
+            WarnSkippedMaliDraw("vertex range outside stream", slot, startVertex + vertexCount, vertexCapacity);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+template<typename T>
+static bool ValidateMaliIndexedVertexRangeFromSource(const void* source, uint32_t startIndex, uint64_t indexCount, int32_t baseVertexIndex)
+{
+    const auto* indices = static_cast<const T*>(source);
+    uint64_t minIndex = std::numeric_limits<uint64_t>::max();
+    uint64_t maxIndex = 0;
+    for (uint64_t i = 0; i < indexCount; ++i)
+    {
+        const uint64_t index = ByteSwap(indices[startIndex + i]);
+        minIndex = std::min(minIndex, index);
+        maxIndex = std::max(maxIndex, index);
+    }
+
+    const int64_t firstVertex = int64_t(minIndex) + baseVertexIndex;
+    const int64_t lastVertex = int64_t(maxIndex) + baseVertexIndex;
+    if (firstVertex < 0 || lastVertex < firstVertex)
+    {
+        WarnSkippedMaliDraw("negative indexed vertex range", uint64_t(baseVertexIndex), minIndex, maxIndex);
+        return false;
+    }
+
+    return ValidateMaliVertexRange(uint64_t(firstVertex), uint64_t(lastVertex - firstVertex + 1));
+}
+
+static bool ValidateMaliIndexedVertexRange(uint32_t startIndex, uint64_t indexCount, int32_t baseVertexIndex)
+{
+    if (!g_isMali || indexCount == 0 || g_indexBuffer == nullptr)
+        return true;
+
+    const uint32_t elementSize = g_indexBufferView.format == RenderFormat::R32_UINT
+        ? sizeof(uint32_t)
+        : sizeof(uint16_t);
+    if (indexCount > std::numeric_limits<uint32_t>::max() ||
+        startIndex > g_indexBuffer->dataSize / elementSize ||
+        indexCount > (g_indexBuffer->dataSize / elementSize - startIndex))
+    {
+        WarnSkippedMaliDraw("index range outside buffer", startIndex, indexCount, g_indexBuffer->dataSize);
+        return false;
+    }
+
+    std::lock_guard snapshotLock(g_indexBuffer->maliGuestSnapshotMutex);
+    const void* source = g_indexBuffer->maliGuestSnapshotValid
+        ? g_indexBuffer->maliGuestSnapshot.get()
+        : g_indexBuffer->mappedMemory;
+    if (source == nullptr)
+        return true;
+
+    if (elementSize == sizeof(uint32_t))
+        return ValidateMaliIndexedVertexRangeFromSource<uint32_t>(source, startIndex, indexCount, baseVertexIndex);
+    return ValidateMaliIndexedVertexRangeFromSource<uint16_t>(source, startIndex, indexCount, baseVertexIndex);
+}
+
+static bool BindGeneratedSequentialIndexBuffer(uint32_t primitiveType, uint64_t vertexCount)
+{
+    if (vertexCount == 0 || vertexCount > std::numeric_limits<uint32_t>::max())
+        return false;
+
+    uint32_t indexCount = 0;
+    if (primitiveType == D3DPT_QUADLIST)
+        indexCount = g_quadIndexData.prepare(static_cast<uint32_t>(vertexCount));
+    else if (primitiveType == D3DPT_TRIANGLEFAN)
+        indexCount = g_triangleFanIndexData.prepare(static_cast<uint32_t>(vertexCount));
+
+    return indexCount != 0;
+}
+
+template<typename T>
+static bool UploadGeneratedNativeIndices(const std::vector<T>& generated)
+{
+    if (generated.empty() || generated.size() > std::numeric_limits<uint32_t>::max() / sizeof(T))
+        return false;
+
+    auto allocation = g_uploadAllocators[g_frame].allocate<false>(
+        generated.data(),
+        static_cast<uint32_t>(generated.size() * sizeof(T)),
+        alignof(T));
+    g_indexBufferView.buffer = allocation.buffer->at(allocation.offset);
+    g_indexBufferView.size = static_cast<uint32_t>(generated.size() * sizeof(T));
+    g_indexBufferView.format = sizeof(T) == sizeof(uint32_t) ? RenderFormat::R32_UINT : RenderFormat::R16_UINT;
+    g_dirtyStates.indices = true;
+    return true;
+}
+
+template<typename T>
+static bool BindGeneratedIndexedTriangleFanFromSource(const void* source, uint32_t startIndex, uint64_t sourceIndexCount)
+{
+    if (sourceIndexCount < 3 || sourceIndexCount > (std::numeric_limits<uint32_t>::max() / 3 + 2))
+        return false;
+
+    const auto* sourceIndices = static_cast<const T*>(source);
+    thread_local std::vector<T> generated;
+    generated.resize((sourceIndexCount - 2) * 3);
+
+    for (uint64_t i = 0; i < sourceIndexCount - 2; ++i)
+    {
+        generated[i * 3 + 0] = ByteSwap(sourceIndices[startIndex]);
+        generated[i * 3 + 1] = ByteSwap(sourceIndices[startIndex + i + 1]);
+        generated[i * 3 + 2] = ByteSwap(sourceIndices[startIndex + i + 2]);
+    }
+
+    return UploadGeneratedNativeIndices(generated);
+}
+
+template<typename T>
+static bool BindGeneratedIndexedQuadListFromSource(const void* source, uint32_t startIndex, uint64_t sourceIndexCount)
+{
+    if (sourceIndexCount < 4 || (sourceIndexCount % 4) != 0 ||
+        sourceIndexCount / 4 > std::numeric_limits<uint32_t>::max() / 6)
+    {
+        return false;
+    }
+
+    const auto* sourceIndices = static_cast<const T*>(source);
+    const uint64_t quadCount = sourceIndexCount / 4;
+    thread_local std::vector<T> generated;
+    generated.resize(quadCount * 6);
+
+    for (uint64_t i = 0; i < quadCount; ++i)
+    {
+        const T i0 = ByteSwap(sourceIndices[startIndex + i * 4 + 0]);
+        const T i1 = ByteSwap(sourceIndices[startIndex + i * 4 + 1]);
+        const T i2 = ByteSwap(sourceIndices[startIndex + i * 4 + 2]);
+        const T i3 = ByteSwap(sourceIndices[startIndex + i * 4 + 3]);
+        generated[i * 6 + 0] = i0;
+        generated[i * 6 + 1] = i1;
+        generated[i * 6 + 2] = i2;
+        generated[i * 6 + 3] = i0;
+        generated[i * 6 + 4] = i2;
+        generated[i * 6 + 5] = i3;
+    }
+
+    return UploadGeneratedNativeIndices(generated);
+}
+
+static bool BindGeneratedIndexedPrimitive(uint32_t primitiveType, uint32_t startIndex, uint64_t sourceIndexCount)
+{
+    if (!g_isMali || g_indexBuffer == nullptr)
+        return false;
+
+    const uint32_t elementSize = g_indexBufferView.format == RenderFormat::R32_UINT
+        ? sizeof(uint32_t)
+        : sizeof(uint16_t);
+    if (startIndex > g_indexBuffer->dataSize / elementSize ||
+        sourceIndexCount > (g_indexBuffer->dataSize / elementSize - startIndex))
+    {
+        return false;
+    }
+
+    std::lock_guard snapshotLock(g_indexBuffer->maliGuestSnapshotMutex);
+    const void* source = g_indexBuffer->maliGuestSnapshotValid
+        ? g_indexBuffer->maliGuestSnapshot.get()
+        : g_indexBuffer->mappedMemory;
+    if (source == nullptr)
+        return false;
+
+    if (primitiveType == D3DPT_QUADLIST)
+    {
+        if (elementSize == sizeof(uint32_t))
+            return BindGeneratedIndexedQuadListFromSource<uint32_t>(source, startIndex, sourceIndexCount);
+        return BindGeneratedIndexedQuadListFromSource<uint16_t>(source, startIndex, sourceIndexCount);
+    }
+
+    if (primitiveType == D3DPT_TRIANGLEFAN)
+    {
+        if (elementSize == sizeof(uint32_t))
+            return BindGeneratedIndexedTriangleFanFromSource<uint32_t>(source, startIndex, sourceIndexCount);
+        return BindGeneratedIndexedTriangleFanFromSource<uint16_t>(source, startIndex, sourceIndexCount);
+    }
+
+    return false;
+}
+
 static void DrawPrimitive(GuestDevice* device, uint32_t primitiveType, uint32_t startVertex, uint32_t primitiveCount) 
 {
     LocalRenderCommandQueue queue;
@@ -6922,17 +7202,27 @@ static void ProcDrawPrimitive(const RenderCommand& cmd)
 
     SetPrimitiveType(args.primitiveType);
 
-    FlushRenderStateForRenderThread();
-
     const uint64_t vertexCount = PrimitiveVertexCount(args.primitiveType, args.primitiveCount);
     if (vertexCount == 0)
         return;
+
+    const bool generatedIndexDraw =
+        args.primitiveType == D3DPT_QUADLIST ||
+        (!g_capabilities.triangleFan && args.primitiveType == D3DPT_TRIANGLEFAN);
+    if (generatedIndexDraw && !BindGeneratedSequentialIndexBuffer(args.primitiveType, vertexCount))
+    {
+        WarnSkippedMaliDraw("failed to generate sequential primitive indices", args.primitiveType, vertexCount, 0);
+        return;
+    }
+
+    FlushRenderStateForRenderThread();
 
     const uint32_t stride = g_inputSlots[0].stride;
     const uint64_t endByte = (uint64_t(args.startVertex) + vertexCount) * stride;
     if (stride == 0 ||
         vertexCount > std::numeric_limits<uint32_t>::max() ||
-        endByte > g_vertexBufferViews[0].size)
+        endByte > g_vertexBufferViews[0].size ||
+        !ValidateMaliVertexRange(args.startVertex, vertexCount))
     {
         LOGF_WARNING("Skipping out-of-range non-indexed draw: start {}, count {}, stride {}, view {}.",
             args.startVertex, vertexCount, stride, g_vertexBufferViews[0].size);
@@ -6940,10 +7230,19 @@ static void ProcDrawPrimitive(const RenderCommand& cmd)
     }
 
     auto& commandList = g_commandLists[g_frame];
-    commandList->drawInstanced(static_cast<uint32_t>(vertexCount), 1, args.startVertex, 0);
+    if (generatedIndexDraw)
+    {
+        const uint32_t generatedIndexCount = g_indexBufferView.size /
+            (g_indexBufferView.format == RenderFormat::R32_UINT ? sizeof(uint32_t) : sizeof(uint16_t));
+        commandList->drawIndexedInstanced(generatedIndexCount, 1, 0, args.startVertex, 0);
+    }
+    else
+    {
+        commandList->drawInstanced(static_cast<uint32_t>(vertexCount), 1, args.startVertex, 0);
+    }
 }
 
-static void DrawIndexedPrimitive(GuestDevice* device, uint32_t primitiveType, int32_t baseVertexIndex, uint32_t startIndex, uint32_t primCount)
+static void DrawIndexedPrimitive(GuestDevice* device, uint32_t primitiveType, int32_t baseVertexIndex, uint32_t startIndex, uint32_t indexCount)
 {
     LocalRenderCommandQueue queue;
     FlushRenderStateForMainThread(device, queue);
@@ -6953,7 +7252,7 @@ static void DrawIndexedPrimitive(GuestDevice* device, uint32_t primitiveType, in
     cmd.drawIndexedPrimitive.primitiveType = primitiveType;
     cmd.drawIndexedPrimitive.baseVertexIndex = baseVertexIndex;
     cmd.drawIndexedPrimitive.startIndex = startIndex;
-    cmd.drawIndexedPrimitive.primCount = primCount;
+    cmd.drawIndexedPrimitive.indexCount = indexCount;
 
     queue.submit();
 }
@@ -6966,29 +7265,44 @@ static void ProcDrawIndexedPrimitive(const RenderCommand& cmd)
         RefreshMaliActiveBufferViews();
 
     SetPrimitiveType(args.primitiveType);
-    FlushRenderStateForRenderThread();
 
-    const uint64_t indexCount = PrimitiveVertexCount(args.primitiveType, args.primCount);
+    const uint64_t indexCount = args.indexCount;
     if (indexCount == 0)
         return;
 
     const uint32_t indexSize =
         g_indexBufferView.format == RenderFormat::R32_UINT ? sizeof(uint32_t) : sizeof(uint16_t);
-    if (indexCount == 0 ||
-        args.startIndex > g_indexBufferView.size / indexSize ||
-        indexCount > (g_indexBufferView.size / indexSize - args.startIndex))
+    if (args.startIndex > g_indexBufferView.size / indexSize ||
+        indexCount > (g_indexBufferView.size / indexSize - args.startIndex) ||
+        !ValidateMaliIndexedVertexRange(args.startIndex, indexCount, args.baseVertexIndex))
     {
         LOGF_WARNING("Skipping out-of-range indexed draw: start {}, count {}, index view {}.",
             args.startIndex, indexCount, g_indexBufferView.size);
         return;
     }
 
-    // The render interface and Vulkan both take an index count, while the
-    // guest API supplies a primitive count. The validation above already
-    // expands the primitive count for the selected topology; use that same
-    // expanded value for the actual draw.
-    g_commandLists[g_frame]->drawIndexedInstanced(static_cast<uint32_t>(indexCount), 1,
-        args.startIndex, args.baseVertexIndex, 0);
+    const bool generatedIndexedDraw = g_isMali &&
+        (args.primitiveType == D3DPT_QUADLIST ||
+         (!g_capabilities.triangleFan && args.primitiveType == D3DPT_TRIANGLEFAN));
+    uint32_t drawStartIndex = args.startIndex;
+    uint32_t drawIndexCount = static_cast<uint32_t>(indexCount);
+    if (generatedIndexedDraw)
+    {
+        if (!BindGeneratedIndexedPrimitive(args.primitiveType, args.startIndex, indexCount))
+        {
+            WarnSkippedMaliDraw("failed to generate indexed primitive", args.primitiveType, args.startIndex, indexCount);
+            return;
+        }
+
+        drawStartIndex = 0;
+        drawIndexCount = g_indexBufferView.size /
+            (g_indexBufferView.format == RenderFormat::R32_UINT ? sizeof(uint32_t) : sizeof(uint16_t));
+    }
+
+    FlushRenderStateForRenderThread();
+
+    g_commandLists[g_frame]->drawIndexedInstanced(drawIndexCount, 1,
+        drawStartIndex, args.baseVertexIndex, 0);
 }
 
 static void DrawPrimitiveUP(GuestDevice* device, uint32_t primitiveType, uint32_t primitiveCount, void* vertexStreamZeroData, uint32_t vertexStreamZeroStride)
@@ -7013,7 +7327,7 @@ static void DrawPrimitiveUP(GuestDevice* device, uint32_t primitiveType, uint32_
     cmd.type = RenderCommandType::DrawPrimitiveUP;
     cmd.drawPrimitiveUP.primitiveType = primitiveType;
     cmd.drawPrimitiveUP.primitiveCount = primitiveCount;
-    cmd.drawPrimitiveUP.vertexStreamZeroData = g_intermediaryUploadAllocator.allocate(vertexStreamZeroData, vertexDataSize);
+    cmd.drawPrimitiveUP.vertexStreamZeroData = AllocateRenderCommandMemory(cmd, vertexStreamZeroData, vertexDataSize);
     cmd.drawPrimitiveUP.vertexStreamZeroSize = vertexDataSize;
     cmd.drawPrimitiveUP.vertexStreamZeroStride = vertexStreamZeroStride;
     cmd.drawPrimitiveUP.csdFilterState = g_csdFilterState;
@@ -7024,6 +7338,7 @@ static void DrawPrimitiveUP(GuestDevice* device, uint32_t primitiveType, uint32_
 static void ProcDrawPrimitiveUP(const RenderCommand& cmd)
 {
     const auto& args = cmd.drawPrimitiveUP;
+    RenderCommandMemoryScope ownedMemoryScope{ cmd };
 
     // DrawPrimitiveUP supplies the complete vertex stream for this draw.
     // Do not leave guest streams from a previous mesh active for declarations
@@ -7084,9 +7399,9 @@ static void ProcDrawPrimitiveUP(const RenderCommand& cmd)
     uint32_t indexCount = 0;
 
     if (args.primitiveType == D3DPT_QUADLIST)
-        indexCount = g_quadIndexData.prepare(args.primitiveCount);
+        indexCount = g_quadIndexData.prepare(static_cast<uint32_t>(vertexCount));
     else if (!g_capabilities.triangleFan && args.primitiveType == D3DPT_TRIANGLEFAN)
-        indexCount = g_triangleFanIndexData.prepare(args.primitiveCount);
+        indexCount = g_triangleFanIndexData.prepare(static_cast<uint32_t>(vertexCount));
 
     // Generated UP indices are transient.  Clearing the guest index pointer
     // prevents RefreshMaliActiveBufferViews from overwriting them on the next
@@ -10488,12 +10803,14 @@ GUEST_FUNCTION_HOOK(sub_82541E38, SetRenderState<D3DRS_CLIPPLANEENABLE>);
 
 int GetType(GuestResource* resource)
 {
+    if (resource == nullptr)
+        return 0;
+
     if (resource->type == ResourceType::Texture) return 3;
     if (resource->type == ResourceType::VolumeTexture) return 17;
     if (resource->type == ResourceType::ArrayTexture) return 19;
 
     LOGF_WARNING("unknown resource type {:d}!", (int32_t)resource->type);
-    __builtin_trap();
     return 0;
 }
 

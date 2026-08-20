@@ -2,6 +2,7 @@
 #include <api/Marathon.h>
 #include <gpu/video.h>
 #include <hid/hid.h>
+#include <kernel/memory.h>
 #include <patches/hook_event.h>
 #include <patches/loading_patches.h>
 #include <patches/MainMenuTask_patches.h>
@@ -11,6 +12,13 @@
 #include <ui/options_menu.h>
 #include <user/config.h>
 #include <app.h>
+#include <cctype>
+#include <cstring>
+#include <limits>
+#include <optional>
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
 
 // #define CORNER_DEBUG
 
@@ -36,6 +44,69 @@ static float g_radarMapCoverWidth{};
 static float g_radarMapCoverHeight{};
 
 static float g_podBaseRightX{};
+
+constexpr size_t CSD_MAX_NAME_BYTES = 512;
+constexpr uint32_t CSD_MAX_NODE_COUNT = 4096;
+constexpr uint32_t CSD_MAX_RECURSION_DEPTH = 128;
+
+static bool IsGuestRange(const void* ptr, size_t bytes)
+{
+    if (ptr == nullptr || g_memory.base == nullptr)
+        return false;
+
+    const auto begin = reinterpret_cast<uintptr_t>(g_memory.base);
+    const auto end = begin + PPC_MEMORY_SIZE;
+    const auto p = reinterpret_cast<uintptr_t>(ptr);
+    return p >= begin && p <= end && bytes <= size_t(end - p);
+}
+
+template <typename T>
+static bool IsGuestArray(const T* ptr, size_t count)
+{
+    return count <= std::numeric_limits<size_t>::max() / sizeof(T) &&
+        IsGuestRange(ptr, sizeof(T) * count);
+}
+
+static std::optional<std::string_view> GuestCStringView(const char* text)
+{
+    if (text == nullptr || !IsGuestRange(text, 1))
+        return std::nullopt;
+
+    const auto* end = g_memory.base + PPC_MEMORY_SIZE;
+    const size_t maxBytes = std::min(CSD_MAX_NAME_BYTES, size_t(end - reinterpret_cast<const uint8_t*>(text)));
+    const void* nul = memchr(text, '\0', maxBytes);
+    if (nul == nullptr)
+        return std::nullopt;
+
+    return std::string_view(text, static_cast<const char*>(nul) - text);
+}
+
+static bool IsReasonableCsdCount(uint32_t count)
+{
+    return count <= CSD_MAX_NODE_COUNT;
+}
+
+#if defined(__ANDROID__)
+static bool UseAndroidMaliCsdSafePath()
+{
+    static bool result = []
+    {
+        char model[PROP_VALUE_MAX]{};
+        char vulkan[PROP_VALUE_MAX]{};
+        char egl[PROP_VALUE_MAX]{};
+        __system_property_get("ro.product.model", model);
+        __system_property_get("ro.hardware.vulkan", vulkan);
+        __system_property_get("ro.hardware.egl", egl);
+
+        std::string id = std::string(model) + "/" + vulkan + "/" + egl;
+        std::transform(id.begin(), id.end(), id.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        return strncmp(model, "SM-X11", 6) == 0 ||
+            id.find("mali") != std::string::npos ||
+            id.find("meow") != std::string::npos;
+    }();
+    return result;
+}
+#endif
 
 static float g_bgArrowsEnd{};
 static float g_fgArrowsEnd{};
@@ -188,68 +259,136 @@ void AspectRatioPatches::ComputeOffsets()
 
 void EmplacePath(const void* key, const std::string_view& value)
 {
+    if (!IsGuestRange(key, 1) || value.empty())
+        return;
+
     std::lock_guard lock(g_pathMutex);
     g_paths.emplace(key, HashStr(value));
 }
 
-void TraverseCast(Chao::CSD::Scene* scene, uint32_t castNodeIndex, Chao::CSD::CastNode* castNode, uint32_t castIndex, const std::string& parentPath)
+void TraverseCast(Chao::CSD::Scene* scene, uint32_t castNodeIndex, Chao::CSD::CastNode* castNode,
+    uint32_t castIndex, const std::string& parentPath, uint32_t depth = 0)
 {
-    if (castIndex == ~0)
+    if (castIndex == ~0u || depth >= CSD_MAX_RECURSION_DEPTH ||
+        !IsGuestArray(scene, 1) || !IsGuestArray(castNode, 1))
         return;
 
-    TraverseCast(scene, castNodeIndex, castNode, castNode->pCastLinks[castIndex].SiblingCastIndex, parentPath);
+    const uint32_t castCount = castNode->CastCount;
+    const uint32_t sceneCastCount = scene->CastCount;
+    if (!IsReasonableCsdCount(castCount) || !IsReasonableCsdCount(sceneCastCount) ||
+        castIndex >= castCount ||
+        !IsGuestArray(castNode->pCastLinks.get(), castCount) ||
+        !IsGuestArray(castNode->pCasts.get(), castCount) ||
+        (sceneCastCount != 0 && !IsGuestArray(scene->pCastIndices.get(), sceneCastCount)))
+    {
+        return;
+    }
+
+    const auto* castLinks = castNode->pCastLinks.get();
+    const auto* casts = castNode->pCasts.get();
+
+    TraverseCast(scene, castNodeIndex, castNode, castLinks[castIndex].SiblingCastIndex, parentPath, depth + 1);
 
     std::string path = parentPath;
 
-    for (size_t i = 0; i < scene->CastCount; i++)
+    const auto* castIndices = scene->pCastIndices.get();
+    for (uint32_t i = 0; i < sceneCastCount; i++)
     {
-        auto& index = scene->pCastIndices[i];
+        const auto& index = castIndices[i];
         if (index.CastNodeIndex == castNodeIndex && index.CastIndex == castIndex)
         {
-            path += index.pCastName;
+            if (auto castName = GuestCStringView(index.pCastName.get()); castName && !castName->empty())
+                path += *castName;
             break;
         }
     }
 
-    EmplacePath(castNode->pCasts[castIndex].get(), path);
+    EmplacePath(casts[castIndex].get(), path);
 
     if (castNode->RootCastIndex == castIndex)
         EmplacePath(castNode, path);
 
     path += "/";
 
-    TraverseCast(scene, castNodeIndex, castNode, castNode->pCastLinks[castIndex].ChildCastIndex, path);
+    TraverseCast(scene, castNodeIndex, castNode, castLinks[castIndex].ChildCastIndex, path, depth + 1);
 
     // LOGFN_UTILITY("CSD hierarchy: {}", path);
 }
 
-void TraverseScene(Chao::CSD::Scene* scene, std::string path)
+void TraverseScene(Chao::CSD::Scene* scene, std::string path, uint32_t depth = 0)
 {
+    if (depth >= CSD_MAX_RECURSION_DEPTH || !IsGuestArray(scene, 1) || path.empty())
+        return;
+
+    const uint32_t castNodeCount = scene->CastNodeCount;
+    if (!IsReasonableCsdCount(castNodeCount) ||
+        (castNodeCount != 0 && !IsGuestArray(scene->pCastNodes.get(), castNodeCount)))
+    {
+        return;
+    }
+
     EmplacePath(scene, path);
     path += "/";
 
-    for (size_t i = 0; i < scene->CastNodeCount; i++)
+    auto* castNodes = scene->pCastNodes.get();
+    for (uint32_t i = 0; i < castNodeCount; i++)
     {
-        auto& castNode = scene->pCastNodes[i];
-        TraverseCast(scene, i, &castNode, castNode.RootCastIndex, path);
+        auto& castNode = castNodes[i];
+        TraverseCast(scene, i, &castNode, castNode.RootCastIndex, path, depth + 1);
     }
 }
 
-void TraverseSceneNode(Chao::CSD::SceneNode* sceneNode, std::string path)
+void TraverseSceneNode(Chao::CSD::SceneNode* sceneNode, std::string path, uint32_t depth = 0)
 {
+    if (depth >= CSD_MAX_RECURSION_DEPTH || !IsGuestArray(sceneNode, 1) || path.empty())
+        return;
+
+    const uint32_t sceneCount = sceneNode->SceneCount;
+    const uint32_t childNodeCount = sceneNode->SceneNodeCount;
+    if (!IsReasonableCsdCount(sceneCount) || !IsReasonableCsdCount(childNodeCount) ||
+        (sceneCount != 0 && (!IsGuestArray(sceneNode->pScenes.get(), sceneCount) ||
+                             !IsGuestArray(sceneNode->pSceneIndices.get(), sceneCount))) ||
+        (childNodeCount != 0 && (!IsGuestArray(sceneNode->pSceneNodes.get(), childNodeCount) ||
+                                 !IsGuestArray(sceneNode->pSceneNodeIndices.get(), childNodeCount))))
+    {
+        return;
+    }
+
     EmplacePath(sceneNode, path);
     path += "/";
 
-    for (size_t i = 0; i < sceneNode->SceneCount; i++)
+    auto* scenes = sceneNode->pScenes.get();
+    auto* sceneIndices = sceneNode->pSceneIndices.get();
+    for (uint32_t i = 0; i < sceneCount; i++)
     {
-        auto& sceneIndex = sceneNode->pSceneIndices[i];
-        TraverseScene(sceneNode->pScenes[sceneIndex.SceneIndex], path + sceneIndex.pSceneName.get());
+        const auto& sceneIndex = sceneIndices[i];
+        if (sceneIndex.SceneIndex >= sceneCount)
+            continue;
+
+        auto sceneName = GuestCStringView(sceneIndex.pSceneName.get());
+        if (!sceneName || sceneName->empty())
+            continue;
+
+        std::string childPath = path;
+        childPath += *sceneName;
+        TraverseScene(scenes[sceneIndex.SceneIndex].get(), std::move(childPath), depth + 1);
     }
 
-    for (size_t i = 0; i < sceneNode->SceneNodeCount; i++)
+    auto* childNodes = sceneNode->pSceneNodes.get();
+    auto* childNodeIndices = sceneNode->pSceneNodeIndices.get();
+    for (uint32_t i = 0; i < childNodeCount; i++)
     {
-        auto& sceneNodeIndex = sceneNode->pSceneNodeIndices[i];
-        TraverseSceneNode(&sceneNode->pSceneNodes[sceneNodeIndex.SceneNodeIndex], path + sceneNodeIndex.pSceneNodeName.get());
+        const auto& sceneNodeIndex = childNodeIndices[i];
+        if (sceneNodeIndex.SceneNodeIndex >= childNodeCount)
+            continue;
+
+        auto nodeName = GuestCStringView(sceneNodeIndex.pSceneNodeName.get());
+        if (!nodeName || nodeName->empty())
+            continue;
+
+        std::string childPath = path;
+        childPath += *nodeName;
+        TraverseSceneNode(&childNodes[sceneNodeIndex.SceneNodeIndex], std::move(childPath), depth + 1);
     }
 }
 
@@ -257,24 +396,55 @@ void TraverseSceneNode(Chao::CSD::SceneNode* sceneNode, std::string path)
 PPC_FUNC_IMPL(__imp__sub_82617570);
 PPC_FUNC(sub_82617570)
 {
-    auto pName = reinterpret_cast<char*>(base + PPC_LOAD_U32(ctx.r4.u32 + 4));
-
     __imp__sub_82617570(ctx, base);
 
     if (!ctx.r3.u32)
         return;
 
+    char* pName = nullptr;
+    if (ctx.r4.u32 <= PPC_MEMORY_SIZE - sizeof(uint32_t) * 2)
+    {
+        const uint32_t nameOffset = PPC_LOAD_U32(ctx.r4.u32 + 4);
+        if (nameOffset < PPC_MEMORY_SIZE)
+            pName = reinterpret_cast<char*>(base + nameOffset);
+    }
+
+    if (ctx.r3.u32 > PPC_MEMORY_SIZE - sizeof(uint32_t))
+        return;
+
     auto ppCsdObject = PPC_LOAD_U32(ctx.r3.u32);
 
-    if (!ppCsdObject)
+    if (!ppCsdObject || ppCsdObject >= PPC_MEMORY_SIZE)
         return;
 
     auto pCsdObject = reinterpret_cast<Sonicteam::CsdObject*>(base + ppCsdObject);
 
-    if (!pCsdObject || !pCsdObject->m_pCsdProject)
+    if (!IsGuestArray(pCsdObject, 1) || !pCsdObject->m_pCsdProject)
         return;
 
-    LOGFN_UTILITY("CSD loaded: {} (0x{:08X})", pName, (uint64_t)pCsdObject->m_pCsdProject.get());
+    auto* csdProject = pCsdObject->m_pCsdProject.get();
+    if (!IsGuestArray(csdProject, 1) || !csdProject->m_pResource)
+        return;
+
+    auto* projectResource = csdProject->m_pResource.get();
+    if (!IsGuestArray(projectResource, 1) || !projectResource->pRootNode)
+        return;
+
+    auto* rootNode = projectResource->pRootNode.get();
+    if (!IsGuestArray(rootNode, 1))
+        return;
+
+    auto nameView = GuestCStringView(pName);
+    if (!nameView || nameView->empty())
+    {
+        LOGFN_UTILITY("CSD loaded without a usable resource name; skipping hierarchy cache (0x{:08X})",
+            (uint64_t)csdProject);
+        return;
+    }
+
+    std::string csdName(*nameView);
+
+    LOGFN_UTILITY("CSD loaded: {} (0x{:08X})", csdName, (uint64_t)csdProject);
 
     static const char* s_languages[7] =
     {
@@ -287,42 +457,48 @@ PPC_FUNC(sub_82617570)
         "_Italian"
     };
 
-    auto pSuffix = s_languages[(int)Config::Language.Value];
+    const uint32_t languageIndex = static_cast<uint32_t>(Config::Language.Value);
+    auto pSuffix = languageIndex < std::size(s_languages) ? s_languages[languageIndex] : nullptr;
 
-    auto nameLen = strlen(pName);
-    auto suffixLen = strlen(pSuffix);
-
-    // Truncate language names to redirect CSD modifiers.
-    if (suffixLen < nameLen)
+    // Truncate language names in the local cache key to redirect CSD modifiers.
+    // Do not mutate the guest resource-name buffer: some Android crash dumps
+    // showed menu CSD objects with temporary or empty name storage.
+    if (pSuffix != nullptr)
     {
-        if (strcmpIgnoreCase(pName + nameLen - suffixLen, pSuffix))
+        const size_t nameLen = csdName.length();
+        const size_t suffixLen = strlen(pSuffix);
+        if (suffixLen < nameLen && strcmpIgnoreCase(csdName.c_str() + nameLen - suffixLen, pSuffix))
         {
-            pName[nameLen - suffixLen] = '\0';
+            csdName.resize(nameLen - suffixLen);
 
-            LOGFN_UTILITY("CSD modifier(s) redirected: {}", pName);
+            LOGFN_UTILITY("CSD modifier(s) redirected: {}", csdName);
         }
     }
 
-    TraverseSceneNode(pCsdObject->m_pCsdProject->m_pResource->pRootNode, pName);
+    TraverseSceneNode(rootNode, csdName);
 }
 
 // Chao::CSD::CMemoryAlloc::Free
 PPC_FUNC_IMPL(__imp__sub_82656650);
 PPC_FUNC(sub_82656650)
 {
-    if (ctx.r4.u32 != NULL && PPC_LOAD_U32(ctx.r4.u32) == 0x4649584E && PPC_LOAD_U32(ctx.r4.u32 + 0x20) == 0x6E43504A) // NXIF, nCPJ
+    const uint8_t* key = ctx.r4.u32 < PPC_MEMORY_SIZE ? base + ctx.r4.u32 : nullptr;
+    if (IsGuestRange(key, 0x24) &&
+        PPC_LOAD_U32(ctx.r4.u32) == 0x4649584E &&
+        PPC_LOAD_U32(ctx.r4.u32 + 0x20) == 0x6E43504A) // NXIF, nCPJ
     {
         uint32_t fileSize = PPC_LOAD_U32(ctx.r4.u32 + 0x14);
-    
-        std::lock_guard lock(g_pathMutex);
-        const uint8_t* key = base + ctx.r4.u32;
-    
-        auto lower = g_paths.lower_bound(key);
-        auto upper = g_paths.lower_bound(key + fileSize);
-    
-        g_paths.erase(lower, upper);
+        if (IsGuestRange(key, fileSize))
+        {
+            std::lock_guard lock(g_pathMutex);
 
-        LOGFN_UTILITY("CSD freed: 0x{:08X}", (uint64_t)key);
+            auto lower = g_paths.lower_bound(key);
+            auto upper = g_paths.lower_bound(key + fileSize);
+
+            g_paths.erase(lower, upper);
+
+            LOGFN_UTILITY("CSD freed: 0x{:08X}", (uint64_t)key);
+        }
     }
 
     __imp__sub_82656650(ctx, base);
@@ -392,6 +568,18 @@ void RenderCsdCastMidAsmHook(PPCRegister& r4)
 
 void Draw(PPCContext& ctx, uint8_t* base, PPCFunc* original, uint32_t stride)
 {
+#if defined(__ANDROID__)
+    if (UseAndroidMaliCsdSafePath())
+    {
+        // The SM-X110/Mali driver is extremely sensitive to corrupted or reused
+        // CSD vertex payloads.  Prefer the unmodified game CSD draw path on this
+        // device family; it is less fancy for aspect-ratio tweaks, but avoids
+        // the huge UI/loading-screen wedges shown in tester screenshots.
+        original(ctx, base);
+        return;
+    }
+#endif
+
     CsdModifier modifier{};
 
     auto vpWidth = float(Video::s_viewportWidth);

@@ -40,7 +40,7 @@ You need:
 - Several gigabytes of free storage
 - Your own Xbox 360 game dump
 
-For the smoothest first run, start with the default graphics settings. The Android build defaults to a 50% resolution scale, no anti-aliasing, 4× anisotropic filtering, and motion blur disabled.
+For the smoothest first run, start with the default graphics settings. The Android build defaults to a conservative mobile profile: 25% resolution scale, no anti-aliasing, 1× anisotropic filtering, reduced shadows/reflections, and radial blur disabled. On Samsung Galaxy Tab A9 / Mali-G57 devices, these safety settings are forced at runtime to avoid known Android 15 driver faults.
 
 ## Installation
 
@@ -146,7 +146,7 @@ prebuilts) — place it at the path the configure step reports.
 ./build_apk.sh                # copies libmain.so into jniLibs, runs gradlew assembleDebug
 ```
 
-Requires JDK 17 and the Android SDK (compileSdk 34). The debug APK lands at
+Requires JDK 17 and the Android SDK (compileSdk 35). The debug APK lands at
 `android-apk/app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Optional: bundled drivers

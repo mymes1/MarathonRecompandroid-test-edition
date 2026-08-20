@@ -1,9 +1,11 @@
 #include "file_system.h"
 #include <cpu/guest_thread.h>
 #include <cstdio>
+#include <cstring>
 #include <kernel/xam.h>
 #include <kernel/xdm.h>
 #include <kernel/function.h>
+#include <kernel/memory.h>
 #include <mod/mod_loader.h>
 #include <os/logger.h>
 #include <user/config.h>
@@ -15,6 +17,36 @@ struct FileHandle : KernelObject
     std::fstream stream;
     std::filesystem::path path;
 };
+
+static constexpr size_t MAX_GUEST_PATH_BYTES = 4096;
+
+static std::string_view SafeFileNameView(const char* fileName)
+{
+    if (fileName == nullptr)
+        return {};
+
+    if (g_memory.base != nullptr)
+    {
+        const auto begin = reinterpret_cast<uintptr_t>(g_memory.base);
+        const auto end = begin + PPC_MEMORY_SIZE;
+        const auto ptr = reinterpret_cast<uintptr_t>(fileName);
+        if (ptr >= begin && ptr < end)
+        {
+            const size_t maxBytes = std::min(MAX_GUEST_PATH_BYTES, size_t(end - ptr));
+            const void* nul = memchr(fileName, '\0', maxBytes);
+            if (nul == nullptr)
+            {
+                LOGF_WARNING("Ignoring unterminated guest file path at 0x{:08X}.",
+                    uint32_t(ptr - begin));
+                return {};
+            }
+
+            return std::string_view(fileName, static_cast<const char*>(nul) - fileName);
+        }
+    }
+
+    return std::string_view(fileName);
+}
 
 struct FindHandle : KernelObject
 {
@@ -95,7 +127,14 @@ FileHandle* XCreateFileA
     assert(((dwShareMode & ~(FILE_SHARE_READ | FILE_SHARE_WRITE)) == 0) && "Unknown share mode bits.");
     assert(((dwCreationDisposition & ~(CREATE_NEW | CREATE_ALWAYS)) == 0) && "Unknown creation disposition bits.");
 
-    std::filesystem::path filePath = FileSystem::ResolvePath(lpFileName, true);
+    const std::string_view pathView = SafeFileNameView(lpFileName);
+    if (pathView.empty())
+    {
+        GuestThread::SetLastError(ERROR_PATH_NOT_FOUND);
+        return GetInvalidKernelObject<FileHandle>();
+    }
+
+    std::filesystem::path filePath = FileSystem::ResolvePath(pathView, true);
     std::fstream fileStream;
     std::ios::openmode fileOpenMode = std::ios::binary;
     if (dwDesiredAccess & (GENERIC_READ | FILE_READ_DATA))
@@ -295,12 +334,20 @@ uint32_t XSetFilePointerEx(FileHandle* hFile, int32_t lDistanceToMove, LARGE_INT
 
 FindHandle* XFindFirstFileA(const char* lpFileName, WIN32_FIND_DATAA* lpFindFileData)
 {
-    std::string_view path = lpFileName;
-    if (path.find("\\*") == (path.size() - 2) || path.find("/*") == (path.size() - 2))
+    std::string_view path = SafeFileNameView(lpFileName);
+    if (path.empty())
+        return GetInvalidKernelObject<FindHandle>();
+    auto endsWith = [](std::string_view value, std::string_view suffix)
+    {
+        return value.size() >= suffix.size() &&
+            value.substr(value.size() - suffix.size()) == suffix;
+    };
+
+    if (endsWith(path, "\\*") || endsWith(path, "/*"))
     {
         path.remove_suffix(1);
     }
-    else if (path.find("\\*.*") == (path.size() - 4) || path.find("/*.*") == (path.size() - 4))
+    else if (endsWith(path, "\\*.*") || endsWith(path, "/*.*"))
     {
         path.remove_suffix(3);
     }
@@ -362,7 +409,11 @@ uint32_t XReadFileEx(FileHandle* hFile, void* lpBuffer, uint32_t nNumberOfBytesT
 
 uint32_t XGetFileAttributesA(const char* lpFileName)
 {
-    std::filesystem::path filePath = FileSystem::ResolvePath(lpFileName, true);
+    const std::string_view pathView = SafeFileNameView(lpFileName);
+    if (pathView.empty())
+        return INVALID_FILE_ATTRIBUTES;
+
+    std::filesystem::path filePath = FileSystem::ResolvePath(pathView, true);
     if (std::filesystem::is_directory(filePath))
         return FILE_ATTRIBUTE_DIRECTORY;
     else if (std::filesystem::is_regular_file(filePath))
