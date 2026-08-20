@@ -1,0 +1,272 @@
+[    0.101][t31572][warn][*] OS does not support registry.
+[    0.111][t31572][logger] Marathon Recomp log started
+[    0.111][t31572][build] === APK VERSION: 1.0.0 ===
+[    0.111][t31572][build] ANDROID_BUILD_ID=1.0.0-release
+[    0.111][t31572][device] device=SM-X110 brand=samsung soc=MT8781V/NA android=15 sdk=35 vulkan_hal=mali egl_hal=meow abi=arm64-v8a ram_mb=3740
+[    0.124][t31572][warn][*] Host Startup
+[    0.653][t31572][XAudioInitializeSystem] SDL audio driver: "openslES".
+[    0.746][t31572][*] Audio device opened: freq 48000, channels 2, samples 1024 (requested 1024)
+[    0.856][t31572][*] SDL video driver: "Android"
+[    0.862][t31572][AndroidGetCustomVulkanLoader] Android Vulkan driver mode: System.
+[    0.891][t31572][CreateHostDevice] Mali compatibility path: using CPU RGBA texture fallback.
+[    0.891][t31572][warn][CreateHostDevice] BC texture formats are unsupported by this device. Textures will be decompressed on the CPU at load time, increasing memory usage.
+[    0.891][t31572][warn][CreateHostDevice] Mali compatibility path: limiting bindless descriptors to 1024 textures and 1024 samplers to prevent libGLES_mali shader compiler crashes.
+[    0.891][t31572][CreateHostDevice] Mali compatibility path: conservative Vulkan capabilities enabled.
+[    0.891][t31572][CreateHostDevice] Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.
+[    0.891][t31572][warn][CreateHostDevice] Descriptor set sizes clamped to device limits: 1024 textures, 1024 samplers.
+[    0.891][t31572][CreateHostDevice] CreateHostDevice: loading embedded shader cache.
+[    0.908][t31572][CreateHostDevice] CreateHostDevice: embedded shader cache loaded.
+[    1.162][t31572][android] swapchain (re)created successfully
+[    1.162][t31572][warn][*] Start Guest Thread
+[    1.162][t31572][warn][*] /storage/emulated/0/Android/data/com.sega.marathon/files/MarathonRecomp/game/default.xex
+[    1.188][t31572][*] Changed resolution: 1340x800
+[    1.190][t31572][NetDll_WSAStartup] !!! STUB !!!
+[    1.190][t31572][warn][CreateDevice] 0x0 0x1 0x0 0x1 0xa0a60 0x1000a0a5c
+
+[    1.195][t31573][stderr] Ignoring Vulkan texture barrier for a dead wrapper (texture=0x0).
+[    1.212][t31572][Game] Loading file: "game:\xenon\archives\system.arc"
+[    1.214][t31572][Game] Loading file: "game:\win32\archives\sprite.arc"
+[    1.215][t31572][Game] Loading file: "game:\xenon\archives\cache.arc"
+[    1.219][t31572][Game] Loading file: "game:\win32\archives\particle_data.arc"
+[    1.252][t31572][Game] Loading file: "game:\xenon\archives\shader.arc"
+[    1.289][t31572][ExRegisterTitleTerminateNotification] !!! STUB !!!
+[    1.289][t31572][ExCreateThread] 0x1000A0674, 0x0, 0x0, 0x0, 0x8255B848, 0x0, 0x10000001 A3EBA875
+[    1.289][t31572][ObDereferenceObject] !!! STUB !!!
+[    1.290][t31572][ExCreateThread] 0x1000A0660, 0x0, 0x101AE23F8, 0x826FE080, 0x825866A8, 0x1AE23E0, 0x1 EE0028F6
+[    1.290][t31572][ExCreateThread] 0x1000A0660, 0x0, 0x101AE24F8, 0x826FE080, 0x825866A8, 0x1AE24E0, 0x1 F0AE0B29
+[    1.323][t31572][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8DB8, 0x826FE080, 0x825866A8, 0x1FC8DA0, 0x1 C7211B71
+[    1.323][t31572][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8E38, 0x826FE080, 0x825866A8, 0x1FC8E20, 0x1 67D1898B
+[    1.324][t31572][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8EB8, 0x826FE080, 0x825866A8, 0x1FC8EA0, 0x1 B5EF9EA0
+[    1.324][t31572][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8F38, 0x826FE080, 0x825866A8, 0x1FC8F20, 0x1 C127B445
+[    1.324][t31572][ExCreateThread] 0x1000A0760, 0x0, 0x101FC8FB8, 0x826FE080, 0x825866A8, 0x1FC8FA0, 0x1 6AADA44B
+[    1.324][t31572][ExCreateThread] 0x1000A0760, 0x0, 0x101FC9038, 0x826FE080, 0x825866A8, 0x1FC9020, 0x1 43F5E5FA
+[    1.325][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9238, 0x826FE080, 0x825866A8, 0x1FC9220, 0x1 FC23FDBC
+[    1.325][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC92B8, 0x826FE080, 0x825866A8, 0x1FC92A0, 0x1 95DB4CC8
+[    1.325][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9338, 0x826FE080, 0x825866A8, 0x1FC9320, 0x1 27CCF800
+[    1.325][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC93B8, 0x826FE080, 0x825866A8, 0x1FC93A0, 0x1 8C48961
+[    1.325][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9438, 0x826FE080, 0x825866A8, 0x1FC9420, 0x1 A6499F47
+[    1.325][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC95B8, 0x826FE080, 0x825866A8, 0x1FC95A0, 0x1 A8C99064
+[    1.326][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9638, 0x826FE080, 0x825866A8, 0x1FC9620, 0x1 3247E2CD
+[    1.326][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC96B8, 0x826FE080, 0x825866A8, 0x1FC96A0, 0x1 B8F5497A
+[    1.326][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC9738, 0x826FE080, 0x825866A8, 0x1FC9720, 0x1 CD6B1DCA
+[    1.326][t31572][ExCreateThread] 0x1000A0750, 0x0, 0x101FC97B8, 0x826FE080, 0x825866A8, 0x1FC97A0, 0x1 786653B5
+[    1.331][t31572][*] CSD freed: 0x101FB8C60
+[    1.331][t31572][*] CSD loaded: sprite/loading/loading_english (0x101FD6E60)
+[    1.331][t31572][*] CSD modifier(s) redirected: sprite/loading/loading
+[    1.333][t31572][ExCreateThread] 0x1000A0920, 0x0, 0x101FBBBF8, 0x826FE080, 0x825866A8, 0x1FBBBE0, 0x1 ADD7EBC7
+[    1.333][t31572][Game] Loading file: "game:\xenon\archives\enemy.arc"
+[    1.334][t31572][Game] Loading file: "game:\xenon\archives\event.arc"
+[    1.335][t31572][Game] Loading file: "game:\xenon\archives\game.arc"
+[    1.336][t31572][Game] Loading file: "game:\xenon\archives\human.arc"
+[    1.337][t31572][Game] Loading file: "game:\xenon\archives\object.arc"
+[    1.339][t31572][Game] Loading file: "game:\xenon\archives\particle.arc"
+[    1.340][t31572][Game] Loading file: "game:\xenon\archives\scripts.arc"
+[    1.342][t31572][Game] Loading file: "game:\xenon\archives\sound.arc"
+[    1.343][t31572][Game] Loading file: "game:\xenon\archives\stage.arc"
+[    1.344][t31572][Game] Loading file: "game:\xenon\archives\text.arc"
+[    1.345][t31572][Game] Loading file: "game:\xenon\archives\player.arc"
+[    1.346][t31572][Game] Loading file: "game:\win32\archives\enemy_data.arc"
+[    1.347][t31572][Game] Loading file: "game:\win32\archives\event_data.arc"
+[    1.349][t31572][Game] Loading file: "game:\win32\archives\player_amy.arc"
+[    1.350][t31572][Game] Loading file: "game:\win32\archives\player_blaze.arc"
+[    1.351][t31572][Game] Loading file: "game:\win32\archives\player_common.arc"
+[    1.352][t31572][Game] Loading file: "game:\win32\archives\player_knuckles.arc"
+[    1.352][t31572][Game] Loading file: "game:\win32\archives\player_omega.arc"
+[    1.353][t31572][Game] Loading file: "game:\win32\archives\player_princess.arc"
+[    1.354][t31572][Game] Loading file: "game:\win32\archives\player_rouge.arc"
+[    1.354][t31572][Game] Loading file: "game:\win32\archives\player_shadow.arc"
+[    1.355][t31572][Game] Loading file: "game:\win32\archives\player_silver.arc"
+[    1.356][t31572][Game] Loading file: "game:\win32\archives\player_sonic.arc"
+[    1.357][t31572][Game] Loading file: "game:\win32\archives\player_supershadow.arc"
+[    1.357][t31572][Game] Loading file: "game:\win32\archives\player_supersilver.arc"
+[    1.358][t31572][Game] Loading file: "game:\win32\archives\player_supersonic.arc"
+[    1.360][t31572][Game] Loading file: "game:\win32\archives\player_tails.arc"
+[    1.361][t31572][Game] Loading file: "game:\win32\archives\radarmap.arc"
+[    1.362][t31572][Game] Loading file: "game:\win32\archives\stage_aqa_a.arc"
+[    1.363][t31572][Game] Loading file: "game:\win32\archives\stage_aqa_b.arc"
+[    1.364][t31572][Game] Loading file: "game:\win32\archives\stage_boss_dr1_dtd.arc"
+[    1.364][t31572][Game] Loading file: "game:\win32\archives\stage_boss_dr1_wap.arc"
+[    1.365][t31572][Game] Loading file: "game:\win32\archives\stage_boss_dr2.arc"
+[    1.366][t31572][Game] Loading file: "game:\win32\archives\stage_boss_dr3.arc"
+[    1.367][t31572][Game] Loading file: "game:\win32\archives\stage_boss_iblis02.arc"
+[    1.367][t31572][Game] Loading file: "game:\win32\archives\stage_boss_iblis03.arc"
+[    1.368][t31572][Game] Loading file: "game:\win32\archives\stage_boss_mefi01.arc"
+[    1.369][t31572][Game] Loading file: "game:\win32\archives\stage_boss_mefi02.arc"
+[    1.369][t31572][Game] Loading file: "game:\win32\archives\stage_boss_rct.arc"
+[    1.370][t31572][Game] Loading file: "game:\win32\archives\stage_boss_solaris.arc"
+[    1.371][t31572][Game] Loading file: "game:\win32\archives\stage_csc_a.arc"
+[    1.372][t31572][Game] Loading file: "game:\win32\archives\stage_csc_b.arc"
+[    1.373][t31572][Game] Loading file: "game:\win32\archives\stage_csc_c.arc"
+[    1.373][t31572][Game] Loading file: "game:\win32\archives\stage_csc_e.arc"
+[    1.374][t31572][Game] Loading file: "game:\win32\archives\stage_csc_f.arc"
+[    1.375][t31572][Game] Loading file: "game:\win32\archives\stage_csc_iblis01.arc"
+[    1.376][t31572][Game] Loading file: "game:\win32\archives\stage_dtd_a.arc"
+[    1.376][t31572][Game] Loading file: "game:\win32\archives\stage_dtd_b.arc"
+[    1.377][t31572][Game] Loading file: "game:\win32\archives\stage_e0003.arc"
+[    1.378][t31572][Game] Loading file: "game:\win32\archives\stage_e0009.arc"
+[    1.378][t31572][Game] Loading file: "game:\win32\archives\stage_e0010.arc"
+[    1.379][t31572][Game] Loading file: "game:\win32\archives\stage_e0012.arc"
+[    1.380][t31572][Game] Loading file: "game:\win32\archives\stage_e0021.arc"
+[    1.381][t31572][Game] Loading file: "game:\win32\archives\stage_e0022.arc"
+[    1.382][t31572][Game] Loading file: "game:\win32\archives\stage_e0023.arc"
+[    1.382][t31572][Game] Loading file: "game:\win32\archives\stage_e0026.arc"
+[    1.383][t31572][Game] Loading file: "game:\win32\archives\stage_e0028.arc"
+[    1.384][t31572][Game] Loading file: "game:\win32\archives\stage_e0031.arc"
+[    1.384][t31572][Game] Loading file: "game:\win32\archives\stage_e0104.arc"
+[    1.385][t31572][Game] Loading file: "game:\win32\archives\stage_e0105.arc"
+[    1.386][t31572][Game] Loading file: "game:\win32\archives\stage_e0106.arc"
+[    1.387][t31572][Game] Loading file: "game:\win32\archives\stage_e0120.arc"
+[    1.387][t31572][Game] Loading file: "game:\win32\archives\stage_e0125.arc"
+[    1.388][t31572][Game] Loading file: "game:\win32\archives\stage_e0206.arc"
+[    1.389][t31572][Game] Loading file: "game:\win32\archives\stage_e0214.arc"
+[    1.389][t31572][Game] Loading file: "game:\win32\archives\stage_e0216.arc"
+[    1.390][t31572][Game] Loading file: "game:\win32\archives\stage_e0221.arc"
+[    1.391][t31572][Game] Loading file: "game:\win32\archives\stage_e0304.arc"
+[    1.392][t31572][Game] Loading file: "game:\win32\archives\stage_flc_a.arc"
+[    1.393][t31572][Game] Loading file: "game:\win32\archives\stage_flc_b.arc"
+[    1.396][t31572][Game] Loading file: "game:\win32\archives\stage_kdv_a.arc"
+[    1.399][t31572][Game] Loading file: "game:\win32\archives\stage_kdv_b.arc"
+[    1.401][t31572][Game] Loading file: "game:\win32\archives\stage_kdv_c.arc"
+[    1.403][t31572][Game] Loading file: "game:\win32\archives\stage_kdv_d.arc"
+[    1.405][t31572][Game] Loading file: "game:\win32\archives\stage_rct_a.arc"
+[    1.407][t31572][Game] Loading file: "game:\win32\archives\stage_rct_b.arc"
+[    1.409][t31572][Game] Loading file: "game:\win32\archives\stage_tpj_a.arc"
+[    1.410][t31572][Game] Loading file: "game:\win32\archives\stage_tpj_b.arc"
+[    1.411][t31572][Game] Loading file: "game:\win32\archives\stage_tpj_c.arc"
+[    1.413][t31572][Game] Loading file: "game:\win32\archives\stage_twn_a.arc"
+[    1.414][t31572][Game] Loading file: "game:\win32\archives\stage_twn_b.arc"
+[    1.416][t31572][Game] Loading file: "game:\win32\archives\stage_twn_c.arc"
+[    1.416][t31572][Game] Loading file: "game:\win32\archives\stage_twn_d.arc"
+[    1.417][t31572][Game] Loading file: "game:\win32\archives\stage_wap_a.arc"
+[    1.419][t31572][Game] Loading file: "game:\win32\archives\stage_wap_b.arc"
+[    1.421][t31572][Game] Loading file: "game:\win32\archives\stage_wvo_a.arc"
+[    1.423][t31572][Game] Loading file: "game:\win32\archives\stage_wvo_b.arc"
+[    1.619][t31572][Game] Loading file: "game:\xenon\sound\HD_SEGA.wmv"
+[    1.625][t31572][Game] Loading file: "game:\xenon\sound\HD_SEGA.wmv"
+[    1.629][t31572][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x827422F8, 0x207B820, 0x1 ADD7EBC7
+[    1.629][t31572][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x82742328, 0x207B820, 0x1 ECF8C3E
+[    1.630][t31572][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x82742358, 0x207B820, 0x1 B4AD0F80
+[    1.630][t31572][ExCreateThread] 0x1000A00A0, 0x10000, 0x0, 0x826FE080, 0x82742388, 0x207B820, 0x1 A4E0F914
+[    1.661][t31572][*] Movie: sound\HD_SEGA.sfd - 1280x720
+[    4.206][t31688][sub_82744840] RenderFrame
+[    4.242][t31572][*] CSD freed: 0x102017260
+[    4.242][t31572][*] CSD loaded: sprite/logo/sonicteam_logo (0x1020863A0)
+[    5.336][t31680][heartbeat] alive: frame #222
+[    5.968][t31572][*] CSD freed: 0x102108660
+[    5.968][t31572][*] CSD loaded: sprite/title/title_English (0x10207B9A0)
+[    5.968][t31572][*] CSD modifier(s) redirected: sprite/title/title
+[    5.990][t31572][Game] Loading file: "game:\xenon\sound\title_loop_GBn.wmv"
+[    6.013][t31572][Game] Loading file: "game:\xenon\sound\title_loop_GBn.wmv"
+[    6.017][t31572][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x827422F8, 0x2081FE0, 0x1 B778951B
+[    6.018][t31572][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x82742328, 0x2081FE0, 0x1 ADD7EBC7
+[    6.018][t31572][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x82742358, 0x2081FE0, 0x1 ECF8C3E
+[    6.018][t31572][ExCreateThread] 0x1000A0020, 0x10000, 0x0, 0x826FE080, 0x82742388, 0x2081FE0, 0x1 B4AD0F80
+[    6.025][t31572][*] Movie: sound\title_loop_GBn.wmv - 1280x720
+[   10.337][t31680][heartbeat] alive: frame #516
+[   11.298][t31572][*] CSD freed: 0x108390860
+[   11.298][t31572][*] CSD loaded: sprite/windowtest (0x1076F29E0)
+[   11.299][t31572][*] CSD freed: 0x1083A8860
+[   11.299][t31572][*] CSD loaded: sprite/windowtest (0x1079B6020)
+[   11.300][t31711][sub_82744840] RenderFrame
+[   12.459][t31572][*] Saving achievements...
+[   12.459][t31572][ExCreateThread] 0x1000A0410, 0x0, 0x102087438, 0x826FE080, 0x825866A8, 0x2087420, 0x1 AB6D3656
+[   12.459][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.460][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.461][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.462][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.462][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.462][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.462][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.463][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.463][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.463][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.463][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.463][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.464][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.465][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.465][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.465][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.465][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.465][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.466][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.466][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.466][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.466][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.467][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.467][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.467][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.467][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.467][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.467][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.468][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.468][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.468][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.468][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.468][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.468][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.469][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.469][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.469][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.469][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.469][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.469][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.470][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.470][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.470][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.470][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.470][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.470][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.471][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.471][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.471][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.471][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.471][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.471][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.472][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.472][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.472][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.472][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.472][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.472][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.472][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.473][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.473][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.473][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.473][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.473][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.473][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.473][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.474][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.474][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.474][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.474][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.474][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.474][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.475][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.475][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.475][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.475][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.475][t31782][Game] Loading file: "save:\SonicNextSaveData.bin"
+[   12.477][t31572][*] CSD freed: 0x1020819E0
+[   12.477][t31572][*] CSD loaded: sprite/loading/loading_english (0x10207D2A0)
+[   12.477][t31572][*] CSD modifier(s) redirected: sprite/loading/loading
+[   12.477][t31572][ExCreateThread] 0x1000A0380, 0x0, 0x1020183B8, 0x826FE080, 0x825866A8, 0x20183A0, 0x1 AB6D3656
+[   12.497][t31572][*] CSD freed: 0x1077258A0
+[   12.497][t31572][*] CSD loaded: sprite/loading/loading_english (0x107725720)
+[   12.497][t31572][*] CSD modifier(s) redirected: sprite/loading/loading
+[   12.497][t31572][ExCreateThread] 0x10009FE80, 0x0, 0x107726578, 0x826FE080, 0x825866A8, 0x7726560, 0x1 AB6D3656
+[   12.536][t31572][*] CSD freed: 0x1078880A0
+[   12.536][t31572][*] CSD loaded: sprite/main_menu (0x1077270A0)
+[   12.538][t31572][*] CSD freed: 0x1078880A0
+[   12.538][t31572][*] CSD loaded: sprite/main_menu (0x10772EE60)
+[   12.539][t31572][*] CSD freed: 0x1078880A0
+[   12.539][t31572][*] CSD loaded: sprite/main_menu (0x107730020)
+[   12.564][t31572][*] CSD freed: 0x1077480A0
+[   12.564][t31572][*] CSD loaded:  (0x107732B20)
+[crash] FATAL SIGNAL 7 (SIGBUS) code=1 tid=31572 fault_addr=0x7600000002
+[crash] pc=0x7600000002 lr=0x7600000002 sp=0x762af18150
+[crash] backtrace (best effort):
+[crash] #0 0x762f899f78 (libmain.so+0xc68f78)
+[crash] #1 0x76fa1540a4 (libsigchain.so+0x70a4)
+[crash] #2 0x76ffc2b89c ([vdso]+0x89c)
+[crash] end of report; the system tombstone (if any) has the full backtrace.
