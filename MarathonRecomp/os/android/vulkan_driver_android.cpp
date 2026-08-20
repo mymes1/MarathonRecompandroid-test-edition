@@ -97,6 +97,13 @@ enum class EAndroidGpuFamily
 // named vulkan.<ro.hardware.vulkan>.so) without loading any driver. The bundled Turnip build
 // only works on Adreno; attempting it on other GPUs crashes the first launch and relies on
 // boot recovery to reach the system driver on the second one.
+static bool IsGalaxyTabA9()
+{
+    char model[PROP_VALUE_MAX]{};
+    __system_property_get("ro.product.model", model);
+    return strncmp(model, "SM-X11", 6) == 0;
+}
+
 static EAndroidGpuFamily DetectGpuFamily(std::string &description)
 {
     char vulkanProp[PROP_VALUE_MAX]{};
@@ -120,11 +127,22 @@ static EAndroidGpuFamily DetectGpuFamily(std::string &description)
     for (char &c : lowered)
         c = char(tolower(uint8_t(c)));
 
+    if (IsGalaxyTabA9())
+    {
+        if (!description.empty())
+            description += "/";
+        description += "SM-X11x Mali-G57";
+        return EAndroidGpuFamily::Other;
+    }
+
     if (lowered.empty())
         return EAndroidGpuFamily::Unknown;
 
     if (lowered.find("adreno") != std::string::npos)
         return EAndroidGpuFamily::Adreno;
+
+    if (lowered.find("mali") != std::string::npos || lowered.find("meow") != std::string::npos)
+        return EAndroidGpuFamily::Other;
 
     // Samsung Xclipse (RDNA-based) ships its Vulkan HAL as vulkan.samsung.so.
     if (lowered.find("samsung") != std::string::npos || lowered.find("sgpu") != std::string::npos ||

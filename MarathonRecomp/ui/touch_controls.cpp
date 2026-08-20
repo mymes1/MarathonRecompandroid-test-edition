@@ -79,6 +79,32 @@ namespace
     constexpr int CONTROL_PRESSED_ALPHA = 255;
     constexpr int CONTROL_OUTLINE_ALPHA = 255;
     constexpr int CONTROL_GLYPH_ALPHA = 255;
+    constexpr int CONTROL_STICK_IDLE_ALPHA = 170;
+    constexpr int CONTROL_STICK_ACTIVE_ALPHA = 225;
+    constexpr int CONTROL_THUMB_IDLE_ALPHA = 210;
+    constexpr int CONTROL_THUMB_ACTIVE_ALPHA = 255;
+    constexpr int CONTROL_FEEDBACK_ALPHA = 180;
+
+    struct DrawListClipScope
+    {
+        ImDrawList* drawList = nullptr;
+
+        DrawListClipScope(ImDrawList* drawList, ImVec2 min, ImVec2 max)
+            : drawList(drawList)
+        {
+            if (this->drawList != nullptr)
+                this->drawList->PushClipRect(min, max, false);
+        }
+
+        DrawListClipScope(const DrawListClipScope&) = delete;
+        DrawListClipScope& operator=(const DrawListClipScope&) = delete;
+
+        ~DrawListClipScope()
+        {
+            if (drawList != nullptr)
+                drawList->PopClipRect();
+        }
+    };
 
     struct Layout
     {
@@ -364,8 +390,9 @@ namespace
         }
         st.wButtons |= bits;
 
-        dl->AddCircleFilled(c, baseR, IM_COL32(0, 0, 0, bits ? 90 : 55), 48);
-        dl->AddCircle(c, baseR, IM_COL32(255, 255, 255, 130), 48, 3.0f);
+        dl->AddCircleFilled(c, baseR, IM_COL32(8, 18, 34,
+            bits ? CONTROL_STICK_ACTIVE_ALPHA : CONTROL_STICK_IDLE_ALPHA), 48);
+        dl->AddCircle(c, baseR, IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), 48, 3.0f);
 
         struct { float ox, oy; uint16_t bit; } dirs[4] =
         {
@@ -382,7 +409,8 @@ namespace
             const ImVec2 b2  { c.x + d.ox * baseR * 0.38f + d.oy * baseR * 0.26f,
                                c.y + d.oy * baseR * 0.38f + d.ox * baseR * 0.26f };
             const bool on = (st.wButtons & d.bit) != 0;
-            dl->AddTriangleFilled(tip, b1, b2, IM_COL32(255, 255, 255, on ? 230 : 120));
+            dl->AddTriangleFilled(tip, b1, b2, IM_COL32(255, 255, 255,
+                on ? CONTROL_THUMB_ACTIVE_ALPHA : CONTROL_THUMB_IDLE_ALPHA));
         }
     }
 
@@ -395,7 +423,7 @@ namespace
             dl->AddCircle(r.c, r.hw, IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), 48, 3.0f);
             const float thumb = r.hw * (i == TC_RSTICK ? RSTICK_THUMB_R / RSTICK_BASE_R
                                                        : STICK_THUMB_R / STICK_BASE_R);
-            dl->AddCircleFilled(r.c, thumb, IM_COL32(235, 245, 255, 190), 32);
+            dl->AddCircleFilled(r.c, thumb, IM_COL32(235, 245, 255, CONTROL_THUMB_IDLE_ALPHA), 32);
             return;
         }
 
@@ -599,7 +627,7 @@ void TouchControls::Draw()
     // Android Mali drivers are particularly unforgiving when a dynamic
     // scissor is changed between overlay batches: input still works, but the
     // foreground controls can be clipped out completely.
-    dl->PushClipRect({ 0.0f, 0.0f }, { vw, vh }, false);
+    DrawListClipScope clipScope(dl, { 0.0f, 0.0f }, { vw, vh });
 
     auto tapBox = [&](ImVec2 c, float hw, float hh, const char* label, bool accent)
     {
@@ -664,9 +692,9 @@ void TouchControls::Draw()
                 st.wButtons |= XAMINPUT_GAMEPAD_START;
 
             dl->AddRectFilled({ skipC.x - skipHW, skipC.y - skipHH }, { skipC.x + skipHW, skipC.y + skipHH },
-                IM_COL32(0, 0, 0, pressed ? 150 : 90), skipHH * 0.5f);
+                IM_COL32(8, 18, 34, pressed ? CONTROL_PRESSED_ALPHA : CONTROL_IDLE_ALPHA), skipHH * 0.5f);
             dl->AddRect({ skipC.x - skipHW, skipC.y - skipHH }, { skipC.x + skipHW, skipC.y + skipHH },
-                IM_COL32(255, 255, 255, 150), skipHH * 0.5f, 0, 2.0f);
+                IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), skipHH * 0.5f, 0, 2.0f);
             const char* skipLabel = "SKIP >>";
             const ImVec2 ts = font->CalcTextSizeA(fontPx, FLT_MAX, 0.0f, skipLabel);
             dl->AddText(font, fontPx, { skipC.x - ts.x * 0.5f, skipC.y - ts.y * 0.5f },
@@ -674,7 +702,6 @@ void TouchControls::Draw()
 
             g_state = st;
             g_prevIds = std::move(curIds);
-            dl->PopClipRect();
             return;
         }
 
@@ -789,9 +816,11 @@ void TouchControls::Draw()
                 rstickActive = true;
             }
 
-            dl->AddCircleFilled(rstickC, rBaseR, IM_COL32(0, 0, 0, rstickActive ? 90 : 55), 48);
-            dl->AddCircle(rstickC, rBaseR, IM_COL32(255, 255, 255, 130), 48, 3.0f);
-            dl->AddCircleFilled(rThumbPos, rThumbR, IM_COL32(255, 255, 255, rstickActive ? 170 : 110), 32);
+            dl->AddCircleFilled(rstickC, rBaseR, IM_COL32(8, 18, 34,
+                rstickActive ? CONTROL_STICK_ACTIVE_ALPHA : CONTROL_STICK_IDLE_ALPHA), 48);
+            dl->AddCircle(rstickC, rBaseR, IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), 48, 3.0f);
+            dl->AddCircleFilled(rThumbPos, rThumbR, IM_COL32(255, 255, 255,
+                rstickActive ? CONTROL_THUMB_ACTIVE_ALPHA : CONTROL_THUMB_IDLE_ALPHA), 32);
         }
         else
         {
@@ -850,7 +879,7 @@ void TouchControls::Draw()
                 st.sThumbRY = int16_t(-ay * 32767.0f);
 
                 // Subtle feedback dot so the user can tell the drag is being tracked.
-                dl->AddCircleFilled(*camPos, vh * 0.012f, IM_COL32(255, 255, 255, 70), 24);
+                dl->AddCircleFilled(*camPos, vh * 0.012f, IM_COL32(255, 255, 255, CONTROL_FEEDBACK_ALPHA), 24);
             }
         }
         else
@@ -871,9 +900,11 @@ void TouchControls::Draw()
         }
         else
         {
-            dl->AddCircleFilled(stickC, baseR, IM_COL32(0, 0, 0, stickActive ? 90 : 55), 48);
-            dl->AddCircle(stickC, baseR, IM_COL32(255, 255, 255, 130), 48, 3.0f);
-            dl->AddCircleFilled(thumbPos, thumbR, IM_COL32(255, 255, 255, stickActive ? 170 : 110), 32);
+            dl->AddCircleFilled(stickC, baseR, IM_COL32(8, 18, 34,
+                stickActive ? CONTROL_STICK_ACTIVE_ALPHA : CONTROL_STICK_IDLE_ALPHA), 48);
+            dl->AddCircle(stickC, baseR, IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), 48, 3.0f);
+            dl->AddCircleFilled(thumbPos, thumbR, IM_COL32(255, 255, 255,
+                stickActive ? CONTROL_THUMB_ACTIVE_ALPHA : CONTROL_THUMB_IDLE_ALPHA), 32);
         }
 
         // ---- Face buttons ----
@@ -1063,5 +1094,4 @@ void TouchControls::Draw()
         SaveLayout();
 
     g_prevIds = std::move(curIds);
-    dl->PopClipRect();
 }

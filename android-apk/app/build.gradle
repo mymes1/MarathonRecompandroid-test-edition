@@ -72,3 +72,42 @@ android {
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
 }
+
+if (buildAsApplication) {
+    tasks.register("validateNativePayload") {
+        doLast {
+            def abiDir = file("src/main/jniLibs/arm64-v8a")
+            def requiredLibs = [
+                "libmain.so",
+                "libmain_hook.so",
+                "libfile_redirect_hook.so",
+                "libgsl_alloc_hook.so",
+                "libhook_impl.so"
+            ]
+
+            requiredLibs.each { libName ->
+                def lib = new File(abiDir, libName)
+                if (!lib.isFile()) {
+                    throw new GradleException("Missing native library ${lib}. Run ../../build_android_apk_replit.sh or ../../build_apk.sh so a freshly built arm64-v8a payload is staged before Gradle packaging.")
+                }
+
+                def header = new byte[64]
+                def bytesRead = 0
+                lib.withInputStream { stream ->
+                    bytesRead = stream.read(header)
+                }
+                if (bytesRead < 4 || (header[0] & 0xFF) != 0x7F || (header[1] & 0xFF) != 0x45 || (header[2] & 0xFF) != 0x4C || (header[3] & 0xFF) != 0x46) {
+                    def prefix = new String(header, 0, Math.max(bytesRead, 0), "UTF-8")
+                    if (prefix.startsWith("version https://git-lfs.github.com/spec/")) {
+                        throw new GradleException("${lib} is a Git LFS pointer, not an Android ELF library. Rebuild/copy libmain.so before assembling the APK.")
+                    }
+                    throw new GradleException("${lib} is not an Android ELF library. Rebuild/copy the native payload before assembling the APK.")
+                }
+            }
+        }
+    }
+
+    tasks.matching { it.name == "preBuild" }.configureEach {
+        dependsOn("validateNativePayload")
+    }
+}
