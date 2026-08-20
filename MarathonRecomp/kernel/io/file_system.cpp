@@ -387,7 +387,11 @@ uint32_t XWriteFile(FileHandle* hFile, const void* lpBuffer, uint32_t nNumberOfB
 
 std::filesystem::path FileSystem::ResolvePath(const std::string_view& path, bool checkForMods)
 {
-    LOGF_IMPL(Utility, "Game", "Loading file: \"{}\"", path.data());
+    // path is a string_view and is not required to be NUL-terminated. Passing
+    // data() to a C-string formatter can read beyond the guest path while
+    // archives are loading, corrupting the Android process on malformed or
+    // temporary path storage.
+    LOGF_IMPL(Utility, "Game", "Loading file: \"{}\"", path);
     if (checkForMods)
     {
         std::filesystem::path resolvedPath = ModLoader::ResolvePath(path);
