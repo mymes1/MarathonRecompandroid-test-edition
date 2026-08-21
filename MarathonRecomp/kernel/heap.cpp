@@ -7,6 +7,44 @@
 constexpr size_t RESERVED_BEGIN = 0x7FEA0000;
 constexpr size_t RESERVED_END = 0xA0000000;
 
+namespace
+{
+    // Bookkeeping for physically-aligned allocations. It lives INSIDE the
+    // o1heap allocation, in the bytes immediately before the aligned pointer
+    // that is returned to the guest.
+    //
+    // CRITICAL CONTRACT (violated by the previous implementation): o1heap
+    // keeps its own FragmentHeader {next, prev, size, used} in the
+    // O1HEAP_ALIGNMENT bytes (32 on 64-bit) immediately BEFORE the pointer
+    // o1heapAllocate returns, and every returned pointer is already aligned
+    // to O1HEAP_ALIGNMENT. The old code rounded the o1heap pointer down/up
+    // to the requested alignment and stored bookkeeping at returned[-1] and
+    // returned[-2]. For any requested alignment <= O1HEAP_ALIGNMENT (every
+    // AllocPhysical<T> object and every 0x10-aligned texture/buffer lock)
+    // the aligned pointer EQUALLED the o1heap pointer, so those writes
+    // landed directly on top of o1heap's `size` and `used` fields. The
+    // corrupted fragment headers then desynchronised the free lists on
+    // o1heapFree, handing out overlapping guest allocations. On Android
+    // (SM-X110 included) this presented as garbage overwriting guest data
+    // (CSD resource names turned into binary junk), guest function
+    // pointers becoming small integers (SIGBUS/SIGSEGV at guest_base+2 and
+    // guest_base+0xA during archive loads), missing UI/touch overlays and
+    // glitching geometry - varying run to run with allocation timing.
+    struct PhysicalHeader
+    {
+        void* original; // Pointer originally returned by o1heapAllocate.
+        size_t size;    // Payload size requested by the caller.
+    };
+
+    size_t RoundUpToPowerOfTwo(size_t value)
+    {
+        size_t result = 1;
+        while (result < value)
+            result <<= 1;
+        return result;
+    }
+}
+
 void Heap::Init()
 {
     heap = o1heapInit(g_memory.Translate(0x20000), RESERVED_BEGIN - 0x20000);
@@ -23,25 +61,44 @@ void* Heap::Alloc(size_t size)
 void* Heap::AllocPhysical(size_t size, size_t alignment)
 {
     size = std::max<size_t>(1, size);
-    alignment = alignment == 0 ? 0x1000 : std::max<size_t>(16, alignment);
+    alignment = alignment == 0 ? 0x1000 : RoundUpToPowerOfTwo(std::max<size_t>(alignment, O1HEAP_ALIGNMENT));
 
     std::lock_guard lock(physicalMutex);
 
-    void* ptr = o1heapAllocate(physicalHeap, size + alignment);
-    size_t aligned = ((size_t)ptr + alignment) & ~(alignment - 1);
+    // Reserve enough room for the interior bookkeeping header plus the worst
+    // case alignment shift, so the aligned user pointer (and the header
+    // directly before it) always fit inside this allocation. The header must
+    // NEVER be written into the O1HEAP_ALIGNMENT bytes preceding the o1heap
+    // pointer: that region belongs to o1heap's fragment header.
+    void* ptr = o1heapAllocate(physicalHeap, size + alignment + sizeof(PhysicalHeader));
+    if (ptr == nullptr)
+        return nullptr;
 
-    *((void**)aligned - 1) = ptr;
-    *((size_t*)aligned - 2) = size + O1HEAP_ALIGNMENT;
+    const uintptr_t raw = reinterpret_cast<uintptr_t>(ptr);
+    const uintptr_t user = (raw + sizeof(PhysicalHeader) + alignment - 1) & ~uintptr_t(alignment - 1);
 
-    return (void*)aligned;
+    auto* header = reinterpret_cast<PhysicalHeader*>(user - sizeof(PhysicalHeader));
+    header->original = ptr;
+    header->size = size;
+
+    return reinterpret_cast<void*>(user);
 }
 
 void Heap::Free(void* ptr)
 {
+    if (ptr == nullptr)
+        return;
+
     if (ptr >= physicalHeap)
     {
+        // Aligned physical allocations carry their bookkeeping header
+        // immediately before the returned pointer (see AllocPhysical).
+        auto* header = reinterpret_cast<PhysicalHeader*>(
+            reinterpret_cast<uintptr_t>(ptr) - sizeof(PhysicalHeader));
+        void* original = header->original;
+
         std::lock_guard lock(physicalMutex);
-        o1heapFree(physicalHeap, *((void**)ptr - 1));
+        o1heapFree(physicalHeap, original);
     }
     else
     {
@@ -52,10 +109,14 @@ void Heap::Free(void* ptr)
 
 size_t Heap::Size(void* ptr)
 {
-    if (ptr)
-        return *((size_t*)ptr - 2) - O1HEAP_ALIGNMENT; // relies on fragment header in o1heap.c
+    if (ptr == nullptr)
+        return 0;
 
-    return 0;
+    if (ptr >= physicalHeap)
+        return reinterpret_cast<PhysicalHeader*>(
+            reinterpret_cast<uintptr_t>(ptr) - sizeof(PhysicalHeader))->size;
+
+    return *((size_t*)ptr - 2) - O1HEAP_ALIGNMENT; // relies on fragment header in o1heap.c
 }
 
 uint32_t RtlAllocateHeap(uint32_t heapHandle, uint32_t flags, uint32_t size)
