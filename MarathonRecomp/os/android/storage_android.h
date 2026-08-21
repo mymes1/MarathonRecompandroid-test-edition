@@ -24,4 +24,7 @@ namespace os::android
     // storage, then a populated one under Android/media; defaults to external app
     // storage, which users can populate from a PC without root.
     const std::filesystem::path & GetDataRoot();
+
+    // Exposed so paths.cpp can reuse the same writable-probe on the config directory.
+    bool ProbeDirWritable(const std::filesystem::path &dir);
 }

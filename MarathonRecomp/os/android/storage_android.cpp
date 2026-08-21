@@ -13,7 +13,7 @@ namespace os::android
     // A directory can exist but be unusable: e.g. created via `adb shell mkdir` it's owned
     // by the shell uid, and the app gets EACCES through FUSE. std::filesystem calls on such
     // paths throw all over the codebase (Config::Load etc.), so catch this case up front.
-    static bool ProbeDirWritable(const std::filesystem::path &dir)
+    bool ProbeDirWritable(const std::filesystem::path &dir)
     {
         std::filesystem::path probePath = dir / ".write_probe";
         FILE *file = fopen(probePath.c_str(), "wb");
