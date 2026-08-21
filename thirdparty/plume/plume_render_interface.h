@@ -245,6 +245,11 @@ namespace plume {
 
     struct RenderDevice {
         virtual ~RenderDevice() { }
+        // Blocks until the device is fully idle: every queued command buffer,
+        // presentation and semaphore wait has completed or been retired. Used
+        // around swapchain recreation, where a failed acquire/present can leave
+        // frame semaphores in an undefined state that must not be reused.
+        virtual void waitIdle() { }
         virtual std::unique_ptr<RenderDescriptorSet> createDescriptorSet(const RenderDescriptorSetDesc &desc) = 0;
         virtual std::unique_ptr<RenderShader> createShader(const void *data, uint64_t size, const char *entryPointName, RenderShaderFormat format) = 0;
         virtual std::unique_ptr<RenderSampler> createSampler(const RenderSamplerDesc &desc) = 0;

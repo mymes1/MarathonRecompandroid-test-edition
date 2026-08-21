@@ -16,6 +16,13 @@ struct FileHandle : KernelObject
 {
     std::fstream stream;
     std::filesystem::path path;
+
+    // The 360 issues overlapped reads on the same HANDLE from several guest
+    // threads (archive loads, movie/audio streaming, save data). A shared
+    // std::fstream is not thread-safe: two concurrent seekg+read sequences
+    // interleave, delivering the wrong file regions into guest buffers.
+    // Serialize all stream operations per handle.
+    mutable std::mutex ioMutex;
 };
 
 static constexpr size_t MAX_GUEST_PATH_BYTES = 4096;
@@ -104,9 +111,12 @@ struct FindHandle : KernelObject
         else
             lpFindFileData->dwFileAttributes = ByteSwap(FILE_ATTRIBUTE_NORMAL);
 
-        strncpy(lpFindFileData->cFileName, (const char *)(iterator->first.c_str()), sizeof(lpFindFileData->cFileName));
-        lpFindFileData->nFileSizeLow = ByteSwap(uint32_t(iterator->second.first >> 32U));
-        lpFindFileData->nFileSizeHigh = ByteSwap(uint32_t(iterator->second.first));
+        // Clamp so the name is always NUL-terminated even for unusually long
+        // file names (strncpy alone leaves it unterminated at exactly MAX_PATH).
+        strncpy(lpFindFileData->cFileName, (const char *)(iterator->first.c_str()), sizeof(lpFindFileData->cFileName) - 1);
+        lpFindFileData->cFileName[sizeof(lpFindFileData->cFileName) - 1] = '\0';
+        lpFindFileData->nFileSizeLow = ByteSwap(uint32_t(iterator->second.first & 0xFFFFFFFFu));
+        lpFindFileData->nFileSizeHigh = ByteSwap(uint32_t(iterator->second.first >> 32U));
         lpFindFileData->ftCreationTime = {};
         lpFindFileData->ftLastAccessTime = {};
         lpFindFileData->ftLastWriteTime = {};
@@ -228,23 +238,26 @@ uint32_t XReadFile
 )
 {
     uint32_t result = FALSE;
-    if (lpOverlapped != nullptr)
-    {
-        std::streamoff streamOffset = lpOverlapped->Offset + (std::streamoff(lpOverlapped->OffsetHigh.get()) << 32U);
-        hFile->stream.clear();
-        hFile->stream.seekg(streamOffset, std::ios::beg);
-        if (hFile->stream.bad())
-        {
-            return FALSE;
-        }
-    }
-
     uint32_t numberOfBytesRead;
-    hFile->stream.read((char *)(lpBuffer), nNumberOfBytesToRead);
-    if (!hFile->stream.bad())
     {
-        numberOfBytesRead = uint32_t(hFile->stream.gcount());
-        result = TRUE;
+        std::lock_guard ioLock(hFile->ioMutex);
+        if (lpOverlapped != nullptr)
+        {
+            std::streamoff streamOffset = lpOverlapped->Offset + (std::streamoff(lpOverlapped->OffsetHigh.get()) << 32U);
+            hFile->stream.clear();
+            hFile->stream.seekg(streamOffset, std::ios::beg);
+            if (hFile->stream.bad())
+            {
+                return FALSE;
+            }
+        }
+
+        hFile->stream.read((char *)(lpBuffer), nNumberOfBytesToRead);
+        if (!hFile->stream.bad())
+        {
+            numberOfBytesRead = uint32_t(hFile->stream.gcount());
+            result = TRUE;
+        }
     }
 
     if (result)
@@ -284,6 +297,7 @@ uint32_t XSetFilePointer(FileHandle* hFile, int32_t lDistanceToMove, be<int32_t>
         break;
     }
 
+    std::lock_guard ioLock(hFile->ioMutex);
     hFile->stream.clear();
     hFile->stream.seekg(streamOffset, streamSeekDir);
     if (hFile->stream.bad())
@@ -385,6 +399,7 @@ uint32_t XReadFileEx(FileHandle* hFile, void* lpBuffer, uint32_t nNumberOfBytesT
 {
     uint32_t result = FALSE;
     uint32_t numberOfBytesRead;
+    std::lock_guard ioLock(hFile->ioMutex);
     std::streamoff streamOffset = lpOverlapped->Offset + (std::streamoff(lpOverlapped->OffsetHigh.get()) << 32U);
     hFile->stream.clear();
     hFile->stream.seekg(streamOffset, std::ios::beg);
@@ -426,6 +441,7 @@ uint32_t XWriteFile(FileHandle* hFile, const void* lpBuffer, uint32_t nNumberOfB
 {
     assert(lpOverlapped == nullptr && "Overlapped not implemented.");
 
+    std::lock_guard ioLock(hFile->ioMutex);
     hFile->stream.write((const char *)(lpBuffer), nNumberOfBytesToWrite);
     if (hFile->stream.bad())
         return FALSE;

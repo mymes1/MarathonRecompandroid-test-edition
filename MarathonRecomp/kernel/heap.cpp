@@ -4,6 +4,8 @@
 #include "function.h"
 #include "xdm.h"
 
+#include <cstdint>
+
 constexpr size_t RESERVED_BEGIN = 0x7FEA0000;
 constexpr size_t RESERVED_END = 0xA0000000;
 
