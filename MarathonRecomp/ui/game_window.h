@@ -50,6 +50,10 @@ public:
     static bool IsPositionValid();
     static void Init(const char* sdlVideoDriver = nullptr);
     static void Update();
+    // Drains SDL events queued by Window_OnSDLEvent and feeds them to ImGui on
+    // the calling (present) thread. ImGui is not thread-safe; see the comment
+    // in game_window.cpp. Call immediately before ImGui_ImplSDL2_NewFrame.
+    static void ProcessPendingImGuiSDLEvents();
 
 #ifdef __ANDROID__
     // Android replaces the ANativeWindow across background/foreground. Returns the window

@@ -905,6 +905,14 @@ void Config::Load()
 
 void Config::Save()
 {
+    // Guest threads (video init applying device profiles), the options menu
+    // and shutdown can all save around the same time. The file is written by
+    // truncation, so two interleaved saves (or a crash mid-write) previously
+    // left a corrupted config.toml behind. Serialize writers and publish via
+    // a same-directory rename so readers only ever see a complete file.
+    static std::mutex saveMutex;
+    std::lock_guard saveLock(saveMutex);
+
     LOGN("Saving configuration...");
 
     auto userPath = GetUserPath();
@@ -933,16 +941,40 @@ void Config::Save()
         result += tomlDef + '\n';
     }
 
-    std::ofstream out(GetConfigPath());
+    const auto configPath = GetConfigPath();
+    const auto tempPath = configPath.parent_path() / (configPath.filename().string() + ".tmp");
 
-    if (out.is_open())
     {
-        out << result;
-        out.close();
+        std::ofstream out(tempPath);
+
+        if (out.is_open())
+        {
+            out << result;
+            out.close();
+        }
+
+        if (!out.is_open() || out.fail())
+        {
+            LOGN_ERROR("Failed to write configuration.");
+            std::error_code removeError;
+            std::filesystem::remove(tempPath, removeError);
+            return;
+        }
     }
-    else
+
+    std::error_code renameError;
+    std::filesystem::rename(tempPath, configPath, renameError);
+    if (renameError)
     {
-        LOGN_ERROR("Failed to write configuration.");
+        // Some filesystems refuse rename-over-existing; fall back to replace.
+        std::error_code copyError;
+        std::filesystem::copy_file(tempPath, configPath,
+            std::filesystem::copy_options::overwrite_existing, copyError);
+        std::error_code removeError;
+        std::filesystem::remove(tempPath, removeError);
+
+        if (copyError)
+            LOGN_ERROR("Failed to write configuration.");
     }
 }
 

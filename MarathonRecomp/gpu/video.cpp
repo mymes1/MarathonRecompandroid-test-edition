@@ -2773,6 +2773,21 @@ static void CheckSwapChain()
 #endif
 
         Video::WaitForGPU();
+
+        // A failed acquire/present (surface destroyed on background, rotation,
+        // OUT_OF_DATE on Mali) leaves the frame semaphores in an undefined
+        // state; the Vulkan spec forbids reusing a semaphore after that until
+        // the device is idle. Drain the device fully and recreate the frame
+        // semaphores so no stale semaphore can ever be submitted again. This
+        // runs between frames on the present thread: the previous frame's
+        // submission was fence-completed above and the next frame's commands
+        // are not enqueued until after this present returns.
+        g_device->waitIdle();
+        for (auto& acquireSemaphore : g_acquireSemaphores)
+            acquireSemaphore = g_device->createCommandSemaphore();
+        for (auto& renderSemaphore : g_renderSemaphores)
+            renderSemaphore = g_device->createCommandSemaphore();
+
         g_backBuffer->framebuffers.clear();
         g_swapChainValid = g_swapChain->resize();
         g_needsResize = g_swapChainValid;
@@ -4597,6 +4612,9 @@ static void DrawFPS()
 
 static void DrawImGui()
 {
+    // SDL event watches fire on foreign threads (Java UI thread for touch on
+    // Android); events are queued there and must reach ImGui on this thread.
+    GameWindow::ProcessPendingImGuiSDLEvents();
     ImGui_ImplSDL2_NewFrame();
 
     auto& io = ImGui::GetIO();

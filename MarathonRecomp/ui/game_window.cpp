@@ -6,6 +6,7 @@
 #include <app.h>
 #include <sdl_listener.h>
 #include <SDL_syswm.h>
+#include <mutex>
 
 #if _WIN32
 #include <dwmapi.h>
@@ -17,10 +18,38 @@
 bool m_isFullscreenKeyReleased = true;
 bool m_isResizing = false;
 
+// ImGui contexts are not thread-safe. SDL fires event watches on whichever
+// thread pushes the event: on Android that is the Java UI thread for touch
+// (SDL_SendTouch from onTouchEvent) and the game/main thread for pumped
+// events, while ImGui::NewFrame/Render run on the present thread. Feeding
+// ImGui directly from the watch races the frame being built (the input event
+// queue is a plain vector). Queue events here instead, and let the present
+// thread drain them right before ImGui_ImplSDL2_NewFrame.
+static std::mutex g_imguiEventMutex;
+static std::vector<SDL_Event> g_imguiEventQueue;
+
+void GameWindow::ProcessPendingImGuiSDLEvents()
+{
+    if (ImGui::GetIO().BackendPlatformUserData == nullptr)
+        return;
+
+    std::vector<SDL_Event> pendingEvents;
+    {
+        std::lock_guard lock(g_imguiEventMutex);
+        pendingEvents.swap(g_imguiEventQueue);
+    }
+
+    for (SDL_Event& event : pendingEvents)
+        ImGui_ImplSDL2_ProcessEvent(&event);
+}
+
 int Window_OnSDLEvent(void*, SDL_Event* event)
 {
     if (ImGui::GetIO().BackendPlatformUserData != nullptr)
-        ImGui_ImplSDL2_ProcessEvent(event);
+    {
+        std::lock_guard lock(g_imguiEventMutex);
+        g_imguiEventQueue.push_back(*event);
+    }
 
     for (auto listener : GetEventListeners())
     {

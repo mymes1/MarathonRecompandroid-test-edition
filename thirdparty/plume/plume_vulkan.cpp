@@ -4684,6 +4684,11 @@ namespace plume {
         release();
     }
 
+    void VulkanDevice::waitIdle() {
+        if (vk != VK_NULL_HANDLE)
+            vkDeviceWaitIdle(vk);
+    }
+
     std::unique_ptr<RenderDescriptorSet> VulkanDevice::createDescriptorSet(const RenderDescriptorSetDesc &desc) {
         std::lock_guard objectCreationLock(g_vulkanObjectCreationMutex);
         return std::make_unique<VulkanDescriptorSet>(this, desc);
