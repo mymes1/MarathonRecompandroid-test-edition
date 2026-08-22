@@ -915,10 +915,14 @@ void Config::Save()
 
     LOGN("Saving configuration...");
 
-    auto userPath = GetUserPath();
+    const auto userPath = GetUserPath();
 
-    if (!std::filesystem::exists(userPath))
-        std::filesystem::create_directory(userPath);
+    // create_directory() only creates the final component and its throwing
+    // overload made first-launch saves fragile on Android, where the complete
+    // .config/MarathonRecomp hierarchy may not exist yet. Keep this path
+    // non-throwing: a failed directory creation is reported by the write below.
+    std::error_code directoryError;
+    std::filesystem::create_directories(userPath, directoryError);
 
     std::string result;
     std::string section;
@@ -945,15 +949,22 @@ void Config::Save()
     const auto tempPath = configPath.parent_path() / (configPath.filename().string() + ".tmp");
 
     {
-        std::ofstream out(tempPath);
+        std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);
+        bool writeSucceeded = out.is_open();
 
-        if (out.is_open())
+        if (writeSucceeded)
         {
-            out << result;
+            out.write(result.data(), static_cast<std::streamsize>(result.size()));
+            out.flush();
+            writeSucceeded = out.good();
             out.close();
+            writeSucceeded = writeSucceeded && !out.fail();
         }
 
-        if (!out.is_open() || out.fail())
+        // is_open() is necessarily false after a successful close. The old
+        // check tested !is_open() here and therefore reported every Android
+        // configuration save as failed, exactly matching the SM-X110 log.
+        if (!writeSucceeded)
         {
             LOGN_ERROR("Failed to write configuration.");
             std::error_code removeError;

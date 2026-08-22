@@ -512,8 +512,8 @@ void os::logger::Init()
     // Create log.txt promptly (and roll the previous one) so a tester always finds a
     // fresh file, even if this run happens to log nothing else before a freeze.
     WriteLogRecord("[logger]", nullptr, "Marathon Recomp log started", 27);
-    static constexpr char BuildVersion[] = "=== APK VERSION: 1.0.0 ===";
-    static constexpr char BuildId[] = "ANDROID_BUILD_ID=1.0.0-release";
+    static constexpr char BuildVersion[] = "=== APK VERSION: 1.0.2 ===";
+    static constexpr char BuildId[] = "ANDROID_BUILD_ID=1.0.2-sm-x110-csd-safe";
     WriteLogRecord("[build]", nullptr, BuildVersion, sizeof(BuildVersion) - 1);
     WriteLogRecord("[build]", nullptr, BuildId, sizeof(BuildId) - 1);
     LogDeviceInfo();

@@ -28,15 +28,19 @@ constexpr float CHEVRON_OUTRO_DURATION = 2.01666666666667f;
 static Mutex g_pathMutex;
 static std::map<const void*, XXH64_hash_t> g_paths{};
 
-static std::optional<CsdModifier> g_sceneModifier{};
-static std::optional<CsdModifier> g_castNodeModifier{};
-static std::optional<CsdModifier> g_castModifier{};
+// CSD render hooks can run on both the loading and gameplay guest threads.
+// These values describe the currently nested draw and must never leak from one
+// thread into another; doing so applies an unrelated modifier to a vertex
+// payload and creates the large UI wedges seen during Android startup.
+static thread_local std::optional<CsdModifier> g_sceneModifier{};
+static thread_local std::optional<CsdModifier> g_castNodeModifier{};
+static thread_local std::optional<CsdModifier> g_castModifier{};
 
 static float g_fontPictureWidth{};
 static float g_fontPictureHeight{};
 
-static float g_corners[8]{};
-static bool g_cornerExtract{};
+static thread_local float g_corners[8]{};
+static thread_local bool g_cornerExtract{};
 
 static float g_radarMapX{};
 static float g_radarMapY{};
@@ -396,18 +400,24 @@ void TraverseSceneNode(Chao::CSD::SceneNode* sceneNode, std::string path, uint32
 PPC_FUNC_IMPL(__imp__sub_82617570);
 PPC_FUNC(sub_82617570)
 {
+    // r4 is an input argument and is volatile under the PPC ABI. Capture the
+    // resource-name pointer before invoking the original function; reading r4
+    // afterwards sometimes interpreted a scratch register as a string object.
+    // Besides producing the binary "CSD loaded" log canary, that poisoned the
+    // hierarchy cache and could apply arbitrary aspect modifiers to later UI
+    // vertex draws.
+    uint32_t nameOffset = 0;
+    if (ctx.r4.u32 <= PPC_MEMORY_SIZE - sizeof(uint32_t) * 2)
+        nameOffset = PPC_LOAD_U32(ctx.r4.u32 + 4);
+
     __imp__sub_82617570(ctx, base);
 
     if (!ctx.r3.u32)
         return;
 
-    char* pName = nullptr;
-    if (ctx.r4.u32 <= PPC_MEMORY_SIZE - sizeof(uint32_t) * 2)
-    {
-        const uint32_t nameOffset = PPC_LOAD_U32(ctx.r4.u32 + 4);
-        if (nameOffset < PPC_MEMORY_SIZE)
-            pName = reinterpret_cast<char*>(base + nameOffset);
-    }
+    char* pName = nameOffset != 0 && nameOffset < PPC_MEMORY_SIZE
+        ? reinterpret_cast<char*>(base + nameOffset)
+        : nullptr;
 
     if (ctx.r3.u32 > PPC_MEMORY_SIZE - sizeof(uint32_t))
         return;
@@ -475,6 +485,14 @@ PPC_FUNC(sub_82617570)
         }
     }
 
+#if defined(__ANDROID__)
+    // The tablet compatibility profile intentionally uses the game's original
+    // CSD renderer. Do not build or consume the desktop aspect-modifier cache
+    // there; this also removes loading/gameplay-thread cache churn entirely.
+    if (UseAndroidMaliCsdSafePath())
+        return;
+#endif
+
     TraverseSceneNode(rootNode, csdName);
 }
 
@@ -508,6 +526,17 @@ PPC_FUNC(sub_82656650)
 PPC_FUNC_IMPL(__imp__sub_828C8F60);
 PPC_FUNC(sub_828C8F60)
 {
+#if defined(__ANDROID__)
+    if (UseAndroidMaliCsdSafePath())
+    {
+        // Bypass the complete desktop CSD modifier stack on SM-X110/Mali,
+        // including scene FPS edits and the extra corner-extraction render.
+        // Draw() already follows the same policy for individual casts.
+        __imp__sub_828C8F60(ctx, base);
+        return;
+    }
+#endif
+
     auto pScene = (Chao::CSD::Scene*)(base + ctx.r3.u32);
 
     g_sceneModifier = FindCsdModifier(ctx.r3.u32);
