@@ -1253,135 +1253,14 @@ static RenderBufferReference UploadMaliGuestIndexBuffer(GuestBuffer* buffer)
     return buffer->maliFrameReference;
 }
 
-static uint32_t VertexElementByteSize(uint32_t type)
-{
-    switch (type)
-    {
-    case D3DDECLTYPE_FLOAT1:
-        return 4;
-    case D3DDECLTYPE_FLOAT2:
-        return 8;
-    case D3DDECLTYPE_FLOAT3:
-        return 12;
-    case D3DDECLTYPE_FLOAT4:
-        return 16;
-    case D3DDECLTYPE_D3DCOLOR:
-    case D3DDECLTYPE_UBYTE4:
-    case D3DDECLTYPE_UBYTE4_2:
-    case D3DDECLTYPE_UBYTE4N:
-    case D3DDECLTYPE_UBYTE4N_2:
-    case D3DDECLTYPE_UINT1:
-    case D3DDECLTYPE_UDEC3:
-    case D3DDECLTYPE_DEC3N:
-    case D3DDECLTYPE_DEC3N_2:
-    case D3DDECLTYPE_DEC3N_3:
-        return 4;
-    case D3DDECLTYPE_SHORT2:
-    case D3DDECLTYPE_SHORT2N:
-    case D3DDECLTYPE_USHORT2N:
-    case D3DDECLTYPE_FLOAT16_2:
-        return 4;
-    case D3DDECLTYPE_SHORT4:
-    case D3DDECLTYPE_SHORT4N:
-    case D3DDECLTYPE_USHORT4N:
-    case D3DDECLTYPE_FLOAT16_4:
-        return 8;
-    default:
-        return 0;
-    }
-}
-
-static bool VertexElementUses16BitComponents(uint32_t type)
-{
-    switch (type)
-    {
-    case D3DDECLTYPE_SHORT2:
-    case D3DDECLTYPE_SHORT4:
-    case D3DDECLTYPE_SHORT2N:
-    case D3DDECLTYPE_SHORT4N:
-    case D3DDECLTYPE_USHORT2N:
-    case D3DDECLTYPE_USHORT4N:
-    case D3DDECLTYPE_FLOAT16_2:
-    case D3DDECLTYPE_FLOAT16_4:
-        return true;
-    default:
-        return false;
-    }
-}
-
-static void SwapMaliVertexElements(
-    uint8_t* destination,
-    uint32_t dataSize,
-    uint32_t stream,
-    uint32_t stride,
-    uint32_t streamOffset,
-    const GuestVertexDeclaration* declaration)
-{
-    if (declaration == nullptr || stride == 0)
-        return;
-
-    if (streamOffset > dataSize)
-        return;
-
-    // Vertex data is a byte stream with fields of different widths. Swapping
-    // every four bytes is only correct for an all-32-bit declaration and
-    // corrupts SHORT/FLOAT16/UBYTE fields in the mixed declarations used by
-    // character and cutscene meshes.
-    // The D3D stream offset is part of the vertex-data origin. The bytes before
-    // it may be unrelated padding or data for another stream and must not be
-    // interpreted as vertex zero for this declaration.
-    destination += streamOffset;
-    const uint32_t vertexDataSize = dataSize - streamOffset;
-    const uint32_t vertexCount = vertexDataSize / stride;
-    for (uint32_t vertex = 0; vertex < vertexCount; ++vertex)
-    {
-        uint8_t* vertexData = destination + vertex * stride;
-
-        for (uint32_t i = 0; i < declaration->vertexElementCount; ++i)
-        {
-            const GuestVertexElement& element = declaration->vertexElements[i];
-            if (element.stream == 0xFF || element.type == D3DDECLTYPE_UNUSED)
-                break;
-            if (element.stream != stream)
-                continue;
-
-            const uint32_t byteSize = VertexElementByteSize(element.type);
-            const uint32_t offset = element.offset;
-            if (byteSize == 0 || offset > stride || byteSize > stride - offset)
-            {
-                LOGF_WARNING(
-                    "Ignoring malformed vertex element (stream {}, offset {}, size {}, stride {}).",
-                    stream, offset, byteSize, stride);
-                continue;
-            }
-
-            uint8_t* field = vertexData + offset;
-            if (VertexElementUses16BitComponents(element.type))
-            {
-                for (uint32_t component = 0; component < byteSize; component += sizeof(uint16_t))
-                {
-                    uint16_t value;
-                    memcpy(&value, field + component, sizeof(value));
-                    value = ByteSwap(value);
-                    memcpy(field + component, &value, sizeof(value));
-                }
-            }
-            else if (element.type != D3DDECLTYPE_UBYTE4 &&
-                     element.type != D3DDECLTYPE_UBYTE4_2 &&
-                     element.type != D3DDECLTYPE_UBYTE4N &&
-                     element.type != D3DDECLTYPE_UBYTE4N_2)
-            {
-                for (uint32_t component = 0; component < byteSize; component += sizeof(uint32_t))
-                {
-                    uint32_t value;
-                    memcpy(&value, field + component, sizeof(value));
-                    value = ByteSwap(value);
-                    memcpy(field + component, &value, sizeof(value));
-                }
-            }
-        }
-    }
-}
+// Xbox 360 vertex locks are stored in big-endian 32-bit lanes.  This is the
+// same conversion performed by the normal desktop UnlockVertexBuffer path:
+// reverse each complete lane and preserve a possible byte tail.  In particular,
+// do not convert fields independently from the active declaration.  Packed
+// UBYTE/D3DCOLOR fields and pairs of 16-bit components rely on lane reversal;
+// the generated shaders use GuestVertexDeclaration::swapped* to repair the
+// resulting component order.  Declaration-based conversion bypassed those
+// fixups and was the source of permanently stretched/morphing meshes on Mali.
 
 static RenderBufferReference UploadMaliGuestVertexBuffer(
     GuestBuffer* buffer,
@@ -1454,14 +1333,12 @@ static RenderBufferReference UploadMaliGuestVertexBuffer(
         return {};
     }
 
-    // Keep the guest snapshot raw and perform exactly one conversion into the
-    // host-endian upload. This is also safe for byte-sized tails and for
-    // fields that are not aligned to a 32-bit boundary.
-    auto allocation = g_uploadAllocators[g_frame].allocate(
-        buffer->dataSize, alignof(uint32_t));
-    memcpy(allocation.memory, source, buffer->dataSize);
-    SwapMaliVertexElements(
-        allocation.memory, buffer->dataSize, stream, stride, streamOffset, declaration);
+    // Reproduce the renderer's established Xbox 360 vertex-buffer endian
+    // contract exactly.  The conversion is buffer-relative (not stream-
+    // relative), so non-zero stream offsets still address the same canonical
+    // host copy and packed byte/short attributes keep their expected ordering.
+    auto allocation = g_uploadAllocators[g_frame].allocateByteSwapped32(
+        source, buffer->dataSize, alignof(uint32_t));
 
     cache.reference = allocation.buffer->at(allocation.offset);
     cache.frameSerial = g_frameUploadSerial[g_frame];
@@ -3294,6 +3171,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
             g_capabilities.queryPools = false;
 
             LOG("Mali compatibility path: conservative Vulkan capabilities enabled.");
+            LOG("Mali compatibility path: canonical 32-bit-lane vertex conversion enabled.");
 
             // Mali system Vulkan drivers (libGLES_mali) mis-stride every
             // buffer-to-image copy when bufferRowLength != imageExtent.width,
@@ -7386,27 +7264,13 @@ static void ProcDrawPrimitiveUP(const RenderCommand& cmd)
         return;
     }
 
-    UploadAllocation allocation;
-    if (g_isMali)
-    {
-        allocation = g_uploadAllocators[g_frame].allocate(
-            args.vertexStreamZeroSize, alignof(uint32_t));
-        memcpy(allocation.memory, args.vertexStreamZeroData, args.vertexStreamZeroSize);
-        SwapMaliVertexElements(
-            allocation.memory,
-            args.vertexStreamZeroSize,
-            0,
-            args.vertexStreamZeroStride,
-            0,
-            g_pipelineState.vertexDeclaration);
-    }
-    else
-    {
-        allocation = g_uploadAllocators[g_frame].allocate<true>(
-            reinterpret_cast<const uint32_t*>(args.vertexStreamZeroData),
-            args.vertexStreamZeroSize,
-            alignof(uint32_t));
-    }
+    // DrawPrimitiveUP obeys the same 32-bit-lane endian contract as a locked
+    // vertex buffer. Use the alignment-safe converter on every backend so the
+    // Mali path cannot disagree with the established desktop rendering path.
+    UploadAllocation allocation = g_uploadAllocators[g_frame].allocateByteSwapped32(
+        args.vertexStreamZeroData,
+        args.vertexStreamZeroSize,
+        alignof(uint32_t));
 
     auto& vertexBufferView = g_vertexBufferViews[0];
     vertexBufferView.size = args.vertexStreamZeroSize;
