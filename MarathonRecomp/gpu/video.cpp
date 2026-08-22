@@ -6838,23 +6838,32 @@ static void SetPrimitiveType(uint32_t primitiveType)
     SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.primitiveTopology, ConvertPrimitiveType(primitiveType));
 }
 
-static uint64_t PrimitiveVertexCount(uint32_t primitiveType, uint32_t primitiveCount)
+static uint64_t GuestDrawVertexCount(uint32_t primitiveType, uint32_t vertexCount)
 {
+    // sub_826FEC28 and sub_826FE5C0 are game-side wrappers, not the public
+    // D3D9 DrawPrimitive API: their final argument is already the number of
+    // vertices supplied by the caller.  Expanding it as a primitive count
+    // reads beyond DrawPrimitiveUP's guest payload and submits extra vertices
+    // from unrelated memory.  That produced the repeated screen-sized wedges,
+    // horizontal strips and morphing CSD/movie quads seen on the SM-X110.
+    //
+    // Validate only the topology's minimum/grouping contract here; never
+    // transform the count a second time.
     switch (primitiveType)
     {
     case D3DPT_POINTLIST:
-        return primitiveCount;
+        return vertexCount;
     case D3DPT_LINELIST:
-        return uint64_t(primitiveCount) * 2;
+        return vertexCount >= 2 ? vertexCount : 0;
     case D3DPT_LINESTRIP:
-        return primitiveCount != 0 ? uint64_t(primitiveCount) + 1 : 0;
+        return vertexCount >= 2 ? vertexCount : 0;
     case D3DPT_TRIANGLELIST:
-        return uint64_t(primitiveCount) * 3;
+        return vertexCount >= 3 ? vertexCount : 0;
     case D3DPT_TRIANGLESTRIP:
     case D3DPT_TRIANGLEFAN:
-        return primitiveCount != 0 ? uint64_t(primitiveCount) + 2 : 0;
+        return vertexCount >= 3 ? vertexCount : 0;
     case D3DPT_QUADLIST:
-        return uint64_t(primitiveCount) * 4;
+        return (vertexCount >= 4 && (vertexCount % 4) == 0) ? vertexCount : 0;
     default:
         return 0;
     }
@@ -7098,7 +7107,7 @@ static void ProcDrawPrimitive(const RenderCommand& cmd)
 
     SetPrimitiveType(args.primitiveType);
 
-    const uint64_t vertexCount = PrimitiveVertexCount(args.primitiveType, args.primitiveCount);
+    const uint64_t vertexCount = GuestDrawVertexCount(args.primitiveType, args.primitiveCount);
     if (vertexCount == 0)
         return;
 
@@ -7203,7 +7212,7 @@ static void ProcDrawIndexedPrimitive(const RenderCommand& cmd)
 
 static void DrawPrimitiveUP(GuestDevice* device, uint32_t primitiveType, uint32_t primitiveCount, void* vertexStreamZeroData, uint32_t vertexStreamZeroStride)
 {
-    const uint64_t vertexCount = PrimitiveVertexCount(primitiveType, primitiveCount);
+    const uint64_t vertexCount = GuestDrawVertexCount(primitiveType, primitiveCount);
     if (vertexCount == 0 ||
         vertexStreamZeroStride == 0 ||
         vertexCount > std::numeric_limits<uint32_t>::max() / vertexStreamZeroStride)
@@ -7253,7 +7262,7 @@ static void ProcDrawPrimitiveUP(const RenderCommand& cmd)
     SetPrimitiveType(args.primitiveType);
     SetDirtyValue(g_dirtyStates.pipelineState, g_pipelineState.vertexStrides[0], args.vertexStreamZeroStride);
 
-    const uint64_t vertexCount = PrimitiveVertexCount(args.primitiveType, args.primitiveCount);
+    const uint64_t vertexCount = GuestDrawVertexCount(args.primitiveType, args.primitiveCount);
     if (vertexCount == 0 ||
         args.vertexStreamZeroStride == 0 ||
         vertexCount > std::numeric_limits<uint32_t>::max() / args.vertexStreamZeroStride ||

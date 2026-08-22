@@ -4,7 +4,10 @@
 // config.toml (user/config.cpp). These stubs keep the shared code linking.
 inline bool os::registry::Init()
 {
-    return false;
+    // Android intentionally uses config.toml instead of a platform registry.
+    // Treat that no-op backend as successfully initialized so startup does not
+    // report a misleading compatibility warning on every launch.
+    return true;
 }
 
 template<typename T>
