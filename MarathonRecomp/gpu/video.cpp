@@ -3835,7 +3835,7 @@ static void UnlockTextureRect(GuestTexture* texture)
     {
         if (texture == nullptr || texture->mappedMemory == nullptr)
         {
-            LOGF_WARNING("Skipping texture unlock with no CPU lock buffer.");
+            LOG_WARNING("Skipping texture unlock with no CPU lock buffer.");
             return;
         }
         snapshot = std::make_unique<uint8_t[]>(slicePitch);
@@ -3972,7 +3972,7 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
     if (source == nullptr)
     {
         delete[] args.snapshot;
-        LOGF_WARNING("Skipping texture unlock with no source memory.");
+        LOG_WARNING("Skipping texture unlock with no source memory.");
         if (g_isMali)
             EndMaliTextureUpload(args.texture);
         return;
@@ -4047,7 +4047,7 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
             return;
         if (buffer->mappedMemory == nullptr)
         {
-            LOGF_WARNING("Skipping buffer unlock with no CPU lock buffer.");
+            LOG_WARNING("Skipping buffer unlock with no CPU lock buffer.");
             return;
         }
 
