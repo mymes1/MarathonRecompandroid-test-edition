@@ -3,6 +3,8 @@
 #include <os/logger.h>
 
 #include <atomic>
+#include <cerrno>
+#include <cstring>
 
 Memory::Memory()
 {
@@ -21,17 +23,31 @@ Memory::Memory()
     base = (uint8_t*)mmap((void*)0x100000000ull, PPC_MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
 
     if (base == (uint8_t*)MAP_FAILED)
-        base = (uint8_t*)mmap(NULL, PPC_MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+        base = (uint8_t*)mmap(nullptr, PPC_MEMORY_SIZE, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
 
-    if (base == nullptr)
+    if (base == (uint8_t*)MAP_FAILED)
+    {
+        base = nullptr;
         return;
+    }
 
 #ifdef __ANDROID__
-    // Keep the guest null page readable and writable. On some devices the game
-    // evaluates a half-constructed animation subtree whose data pointers are 0/-1;
-    // testers confirmed the reads are benign (zeros) with no visual artifacts,
-    // while faulting made the game unplayable there. Desktop builds keep the trap
-    // to catch new bugs.
+    // Keep the guest null page readable and writable. The SM-X110 startup race
+    // can briefly dereference a half-constructed CSD object at guest offset
+    // 0x2A. Although the full guest mapping is requested RW, the device report
+    // proves that this address was protected at the point of access
+    // (SIGSEGV/SEGV_ACCERR at base+0x2A). Explicitly establish and verify the
+    // compatibility-page contract rather than relying on the initial mapping's
+    // permissions remaining unchanged. Zero it so absorbed reads are deterministic.
+    if (mprotect(base, 4096, PROT_READ | PROT_WRITE) != 0)
+    {
+        LOGF_ERROR("Unable to make Android guest null page readable/writable: errno {}.", errno);
+        munmap(base, PPC_MEMORY_SIZE);
+        base = nullptr;
+        return;
+    }
+    memset(base, 0, 4096);
+    LOGF_WARNING("Android guest null page enabled at {:p} (4096 bytes RW).", static_cast<void*>(base));
 #else
     mprotect(base, 4096, PROT_NONE);
 #endif
