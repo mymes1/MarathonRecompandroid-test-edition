@@ -731,11 +731,13 @@ static xxHashMap<GuestVertexDeclaration*> g_vertexDeclarations;
 
 struct UploadBuffer
 {
-    static constexpr size_t SIZE = 16 * 1024 * 1024;
+    static constexpr uint32_t SIZE = 16 * 1024 * 1024;
 
     std::unique_ptr<RenderBuffer> buffer;
     uint8_t* memory = nullptr;
     uint64_t deviceAddress = 0;
+    uint32_t capacity = 0;
+    uint32_t used = 0;
 };
 
 struct UploadAllocator
@@ -746,29 +748,41 @@ struct UploadAllocator
 
     UploadAllocation allocate(uint32_t size, uint32_t alignment)
     {
-        assert(size <= UploadBuffer::SIZE);
+        // Release builds compile assertions out. The old fixed-size allocator
+        // therefore returned a 16 MiB region even for a larger request, and the
+        // following memcpy corrupted adjacent host memory. Large stage resources
+        // can legitimately cross that threshold after mobile compatibility
+        // conversion, so give them a dedicated oversized upload buffer.
+        alignment = std::max(alignment, 1u);
+        const uint64_t alignedOffset =
+            (uint64_t(offset) + alignment - 1) & ~(uint64_t(alignment) - 1);
+        const uint32_t requiredCapacity = std::max(UploadBuffer::SIZE, size);
 
-        offset = (offset + alignment - 1) & ~(alignment - 1);
-
-        if (offset + size > UploadBuffer::SIZE)
+        if (alignedOffset + size > UploadBuffer::SIZE)
         {
             ++index;
             offset = 0;
+        }
+        else
+        {
+            offset = static_cast<uint32_t>(alignedOffset);
         }
 
         if (buffers.size() <= index)
             buffers.resize(index + 1);
 
         auto& buffer = buffers[index];
-        if (buffer.buffer == nullptr)
+        if (buffer.buffer == nullptr || buffer.capacity < requiredCapacity)
         {
-            buffer.buffer = g_device->createBuffer(RenderBufferDesc::UploadBuffer(UploadBuffer::SIZE, RenderBufferFlag::CONSTANT | RenderBufferFlag::VERTEX | RenderBufferFlag::INDEX | RenderBufferFlag::DEVICE_ADDRESSABLE));
+            buffer.buffer = g_device->createBuffer(RenderBufferDesc::UploadBuffer(requiredCapacity, RenderBufferFlag::CONSTANT | RenderBufferFlag::VERTEX | RenderBufferFlag::INDEX | RenderBufferFlag::DEVICE_ADDRESSABLE));
             buffer.memory = reinterpret_cast<uint8_t*>(buffer.buffer->map());
             buffer.deviceAddress = buffer.buffer->getDeviceAddress();
+            buffer.capacity = requiredCapacity;
         }
-        
+
         auto ref = buffer.buffer->at(offset);
         offset += size;
+        buffer.used = std::max(buffer.used, offset);
 
         return { ref.ref, ref.offset, buffer.memory + ref.offset, buffer.deviceAddress + ref.offset };
     }
@@ -835,15 +849,10 @@ struct UploadAllocator
 
     void flush()
     {
-        for (uint32_t i = 0; i < buffers.size(); i++)
+        for (auto& uploadBuffer : buffers)
         {
-            auto& uploadBuffer = buffers[i];
-            if (uploadBuffer.buffer == nullptr)
-                continue;
-
-            const uint32_t used = i < index ? UploadBuffer::SIZE : (i == index ? offset : 0);
-            if (used != 0)
-                uploadBuffer.buffer->flushMappedRange(0, used);
+            if (uploadBuffer.buffer != nullptr && uploadBuffer.used != 0)
+                uploadBuffer.buffer->flushMappedRange(0, uploadBuffer.used);
         }
     }
 
@@ -851,6 +860,8 @@ struct UploadAllocator
     {
         index = 0;
         offset = 0;
+        for (auto& uploadBuffer : buffers)
+            uploadBuffer.used = 0;
     }
 };
 
@@ -3099,23 +3110,24 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
 #endif
 
 #if defined(__ANDROID__)
-    // Some stock Mali Android drivers crash while creating ETC2 images produced
-    // by the BC fallback path. Prefer the slower RGBA CPU decode on Mali; it is
-    // intentionally selected before resource loading and is safer than losing
-    // the process during Vulkan image creation.  ETC2 transcoding also adds a
-    // large amount of CPU work while archives are loading, which causes severe
-    // frame pacing drops on Mali-G57 devices.
-    // Also covers Samsung Galaxy Tab A9 variants (SM-X110/SM-X115/SM-X116/SM-X117)
-    // whose Mali-G57 driver exhibits the same ETC2 creation fault.
+    // Keep the driver's ETC2/EAC capability on Mali. Android Vulkan devices are
+    // required to support these formats, and retaining compressed textures is
+    // essential on low-memory devices such as the 4 GB Galaxy Tab A9. Expanding
+    // every BC texture to RGBA increased image and staging memory by up to 8x;
+    // stage loading then exhausted native memory and terminated with bad_alloc.
+    // The ETC2 path also performs the R/B conversion expected by etcpak, avoiding
+    // the colour corruption seen with the emergency RGBA fallback.
     {
         std::string deviceName = g_device->getDescription().name;
         std::transform(deviceName.begin(), deviceName.end(), deviceName.begin(),
             [](unsigned char c) { return char(std::tolower(c)); });
-        if (deviceName.find("mali") != std::string::npos || deviceName.find("meow") != std::string::npos ||
-            IsGalaxyTabA9())
+        if (deviceName.find("mali") != std::string::npos ||
+            deviceName.find("meow") != std::string::npos || IsGalaxyTabA9())
         {
-            g_capabilities.textureCompressionETC2 = false;
-            LOG("Mali compatibility path: using CPU RGBA texture fallback.");
+            if (g_capabilities.textureCompressionETC2)
+                LOG("Mali compatibility path: using memory-efficient ETC2/EAC texture transcode.");
+            else
+                LOG_WARNING("Mali driver did not report ETC2/EAC; using CPU texture decode as a last resort.");
         }
     }
 #endif
