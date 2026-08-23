@@ -22,20 +22,20 @@ extern "C" void PPCIndirectCallMissing(PPCContext& ctx, uint8_t* base, uint32_t 
 // The valid range spans to the image end, not just the code section: kernel import
 // thunks live directly after the code (first at exactly PPC_CODE_BASE+PPC_CODE_SIZE)
 // and are registered into the function table by Memory::InsertFunction.
+// Do not rely on unsigned range subtraction here. A corrupted guest
+// vtable/function pointer such as 0x00000002 would otherwise be easy to
+// misclassify if the generated constants change type or base. PPC code targets
+// must be aligned and inside the actual image interval.
 #define PPC_CALL_INDIRECT_FUNC(x) \
     do \
     { \
         const uint32_t ppcCallTarget_ = (uint32_t)(x); \
-        // Do not rely on unsigned range subtraction here. A corrupted guest
-        // vtable/function pointer such as 0x00000002 would otherwise be easy
-        // to misclassify if the generated constants change type or base. PPC
-        // code targets must be aligned and inside the actual image interval.
-        const uint64_t ppcTarget_ = ppcCallTarget_;
-        const uint64_t ppcImageBegin_ = PPC_CODE_BASE;
-        const uint64_t ppcImageEnd_ = PPC_IMAGE_BASE + PPC_IMAGE_SIZE;
-        PPCFunc* ppcCallFn_ =
-            (ppcTarget_ >= ppcImageBegin_ &&
-             ppcTarget_ < ppcImageEnd_ &&
+        const uint64_t ppcTarget_ = ppcCallTarget_; \
+        const uint64_t ppcImageBegin_ = PPC_CODE_BASE; \
+        const uint64_t ppcImageEnd_ = PPC_IMAGE_BASE + PPC_IMAGE_SIZE; \
+        PPCFunc* ppcCallFn_ = \
+            (ppcTarget_ >= ppcImageBegin_ && \
+             ppcTarget_ < ppcImageEnd_ && \
              (ppcCallTarget_ & 3u) == 0) \
                 ? PPC_LOOKUP_FUNC(base, ppcCallTarget_) \
                 : nullptr; \
