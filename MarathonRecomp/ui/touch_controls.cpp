@@ -156,6 +156,9 @@ namespace
 
     std::mutex g_mutex;
     std::vector<Finger> g_fingers;
+    // HID polling and ImGui rendering run on different threads on Android.
+    // Never return a reference to the render thread's mutable gamepad state.
+    std::mutex g_stateMutex;
 
     std::atomic<bool> g_autoVisible{ true };
     XAMINPUT_GAMEPAD g_state{};
@@ -533,7 +536,12 @@ void TouchControls::SetVisible(bool visible)
 
 const XAMINPUT_GAMEPAD& TouchControls::GetGamepadState()
 {
-    return g_state;
+    // The thread-local copy keeps the public ABI/reference contract while
+    // preventing HID from observing a half-written pad during a frame.
+    thread_local XAMINPUT_GAMEPAD snapshot{};
+    std::lock_guard lock(g_stateMutex);
+    snapshot = g_state;
+    return snapshot;
 }
 
 void TouchControls::NotifyMenuVisible()
@@ -652,12 +660,13 @@ void TouchControls::Draw()
         // the movie renderer - the movie manager singleton outlives playback, so
         // its mere presence is not usable as a signal).
         ETouchContext context = ETouchContext::Normal;
-        if (g_cutsceneActive.load(std::memory_order_relaxed) ||
-            SDL_GetTicks64() - g_movieSeenAtMs.load(std::memory_order_relaxed) < MOVIE_STAMP_FRESH_MS)
-        {
-            context = ETouchContext::Cutscene;
-        }
-        else if (OptionsMenu::s_isVisible ||
+        // Do not replace the gamepad with a one-button cutscene layout.  The
+        // original cutscene hooks are not present in every title build, and a
+        // stale movie/cutscene stamp could otherwise clear all held axes and
+        // buttons exactly when the entry cutscene hands control back to the
+        // game.  Touch remains a full gamepad throughout; START is still
+        // accepted by the normal button hit test for skip/advance.
+        if (OptionsMenu::s_isVisible ||
             SDL_GetTicks64() - g_menuSeenAtMs.load(std::memory_order_relaxed) < MENU_STAMP_FRESH_MS)
         {
             context = ETouchContext::Menu;
@@ -668,42 +677,6 @@ void TouchControls::Draw()
         const bool useDpad = context == ETouchContext::Menu ||
             (context == ETouchContext::Normal &&
              Config::TouchStickMode == EAndroidTouchStickMode::Dpad);
-
-        if (context == ETouchContext::Cutscene)
-        {
-            g_stickFingerId = (SDL_FingerID)-1;
-            g_rstickFingerId = (SDL_FingerID)-1;
-            g_camFingerId = (SDL_FingerID)-1;
-
-            // One wide SKIP button tucked into the top-right corner, away from the
-            // achievement overlay (top centre) and any subtitles (bottom).
-            const float skipHW = MENU_HW * vh * g_layout.scale * 2.2f;
-            const float skipHH = MENU_HH * vh * g_layout.scale;
-            const ImVec2 skipC = { vw - skipHW - vh * 0.03f, vh * 0.03f + skipHH };
-
-            std::vector<ImVec2> pts;
-            pts.reserve(fps.size());
-            for (const auto& fp : fps)
-                pts.push_back(fp.pos);
-
-            const bool pressed = AnyFingerInRect(pts,
-                { skipC.x - skipHW, skipC.y - skipHH }, { skipC.x + skipHW, skipC.y + skipHH });
-            if (pressed)
-                st.wButtons |= XAMINPUT_GAMEPAD_START;
-
-            dl->AddRectFilled({ skipC.x - skipHW, skipC.y - skipHH }, { skipC.x + skipHW, skipC.y + skipHH },
-                IM_COL32(8, 18, 34, pressed ? CONTROL_PRESSED_ALPHA : CONTROL_IDLE_ALPHA), skipHH * 0.5f);
-            dl->AddRect({ skipC.x - skipHW, skipC.y - skipHH }, { skipC.x + skipHW, skipC.y + skipHH },
-                IM_COL32(235, 245, 255, CONTROL_OUTLINE_ALPHA), skipHH * 0.5f, 0, 2.0f);
-            const char* skipLabel = "SKIP >>";
-            const ImVec2 ts = font->CalcTextSizeA(fontPx, FLT_MAX, 0.0f, skipLabel);
-            dl->AddText(font, fontPx, { skipC.x - ts.x * 0.5f, skipC.y - ts.y * 0.5f },
-                IM_COL32(255, 255, 255, pressed ? 255 : 220), skipLabel);
-
-            g_state = st;
-            g_prevIds = std::move(curIds);
-            return;
-        }
 
         // ---- Left analog stick ----
         const ImVec2 stickC(g_layout.x[TC_STICK] * vw, g_layout.y[TC_STICK] * vh);
@@ -936,7 +909,10 @@ void TouchControls::Draw()
         if (DrawWideButton(dl, pts, ElemRectOf(TC_BACK, vw, vh).c, menuHW, menuHH, menuHW, menuHH, "BACK"))
             st.wButtons |= XAMINPUT_GAMEPAD_BACK;
 
-        g_state = st;
+        {
+            std::lock_guard lock(g_stateMutex);
+            g_state = st;
+        }
 
         g_prevIds = std::move(curIds);
         return;

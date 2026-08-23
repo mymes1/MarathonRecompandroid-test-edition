@@ -1333,12 +1333,32 @@ static RenderBufferReference UploadMaliGuestVertexBuffer(
         return {};
     }
 
-    // Reproduce the renderer's established Xbox 360 vertex-buffer endian
-    // contract exactly.  The conversion is buffer-relative (not stream-
-    // relative), so non-zero stream offsets still address the same canonical
-    // host copy and packed byte/short attributes keep their expected ordering.
-    auto allocation = g_uploadAllocators[g_frame].allocateByteSwapped32(
-        source, buffer->dataSize, alignof(uint32_t));
+    // The D3D stream offset is part of the byte-ordering boundary.  Swapping
+    // from byte zero is wrong when a stream starts at a non-word-aligned
+    // offset: every subsequent 32-bit lane is then rotated relative to the
+    // declaration, which presents as stretched and morphing meshes on Mali.
+    // Keep the prefix intact and begin the lane conversion at the active
+    // stream offset.  The allocation remains buffer-relative because the
+    // caller binds it at `allocation + streamOffset`.
+    auto allocation = g_uploadAllocators[g_frame].allocate(buffer->dataSize, alignof(uint32_t));
+    auto* destination = allocation.memory;
+    const auto* sourceBytes = static_cast<const uint8_t*>(source);
+    if (streamOffset != 0)
+        memcpy(destination, sourceBytes, streamOffset);
+
+    const uint32_t convertSize = buffer->dataSize - streamOffset;
+    const uint32_t wordCount = convertSize / sizeof(uint32_t);
+    for (uint32_t i = 0; i < wordCount; ++i)
+    {
+        uint32_t word;
+        memcpy(&word, sourceBytes + streamOffset + i * sizeof(uint32_t), sizeof(word));
+        word = ByteSwap(word);
+        memcpy(destination + streamOffset + i * sizeof(uint32_t), &word, sizeof(word));
+    }
+    const uint32_t convertedSize = wordCount * sizeof(uint32_t);
+    if (convertedSize != convertSize)
+        memcpy(destination + streamOffset + convertedSize,
+            sourceBytes + streamOffset + convertedSize, convertSize - convertedSize);
 
     cache.reference = allocation.buffer->at(allocation.offset);
     cache.frameSerial = g_frameUploadSerial[g_frame];
@@ -3813,6 +3833,11 @@ static void UnlockTextureRect(GuestTexture* texture)
     std::unique_ptr<uint8_t[]> snapshot;
     if (g_isMali)
     {
+        if (texture == nullptr || texture->mappedMemory == nullptr)
+        {
+            LOGF_WARNING("Skipping texture unlock with no CPU lock buffer.");
+            return;
+        }
         snapshot = std::make_unique<uint8_t[]>(slicePitch);
         memcpy(snapshot.get(), texture->mappedMemory, slicePitch);
     }
@@ -3944,6 +3969,14 @@ static void ProcUnlockTextureRect(const RenderCommand& cmd)
 
     auto allocation = g_uploadAllocators[g_frame].allocate(slicePitch, g_uploadPlacementAlignment);
     const void* source = args.snapshot != nullptr ? args.snapshot : args.texture->mappedMemory;
+    if (source == nullptr)
+    {
+        delete[] args.snapshot;
+        LOGF_WARNING("Skipping texture unlock with no source memory.");
+        if (g_isMali)
+            EndMaliTextureUpload(args.texture);
+        return;
+    }
     if (args.snapshot != nullptr && args.snapshotSize < slicePitch)
     {
         delete[] args.snapshot;
@@ -3993,12 +4026,16 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
         {
             auto src = reinterpret_cast<const T*>(buffer->mappedMemory);
 
-            for (size_t i = 0; i < buffer->dataSize; i += sizeof(T))
+            const size_t completeSize = buffer->dataSize - (buffer->dataSize % sizeof(T));
+            for (size_t i = 0; i < completeSize; i += sizeof(T))
             {
                 *dest = ByteSwap(*src);
                 ++dest;
                 ++src;
             }
+            if (completeSize != buffer->dataSize)
+                memcpy(reinterpret_cast<uint8_t*>(dest),
+                    reinterpret_cast<const uint8_t*>(src), buffer->dataSize - completeSize);
         };
 
     if (g_isMali)
@@ -4008,6 +4045,11 @@ static void UnlockBuffer(GuestBuffer* buffer, bool useCopyQueue)
         // and therefore cannot race a Present/BeginCommandList boundary.
         if (buffer->lockedReadOnly)
             return;
+        if (buffer->mappedMemory == nullptr)
+        {
+            LOGF_WARNING("Skipping buffer unlock with no CPU lock buffer.");
+            return;
+        }
 
         std::lock_guard snapshotLock(buffer->maliGuestSnapshotMutex);
         if (!buffer->maliGuestSnapshot ||
