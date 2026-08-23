@@ -9,8 +9,8 @@ Vertex stream strides must remain full 32-bit values through pipeline-state cach
 
 **How to apply:** When adding or reviewing vertex stream state, keep the guest/API stride and the cached pipeline stride at `uint32_t`; do not introduce narrowing casts for storage or dirty-state comparisons.
 
-Vertex upload endian conversion must begin at the active stream offset, and that offset must be part of the per-frame upload cache key.
+Vertex upload endian conversion must begin at buffer byte zero, matching the established desktop unlock path. The active stream offset is applied only when binding the already-converted buffer and remains part of the per-frame cache key.
 
-**Why:** Converting from byte zero while binding from a nonzero stream offset interprets padding or another stream as vertex zero, producing stretched geometry and fragmented meshes on Mali.
+**Why:** Xbox vertex storage is arranged as big-endian 32-bit lanes from the start of the allocation. Treating a non-word-aligned stream offset as a fresh endian boundary rotates every subsequent lane, producing stretched geometry and fragmented meshes on Mali.
 
-**How to apply:** Copy the full immutable snapshot if needed, but swap only `[streamOffset, dataSize)` using `(dataSize - streamOffset) / stride` vertices; invalidate/rebuild when the offset changes.
+**How to apply:** Convert every complete 32-bit lane in the immutable buffer snapshot, preserve only the final incomplete tail verbatim, then bind at `allocation + streamOffset`; invalidate/rebuild when the offset changes.

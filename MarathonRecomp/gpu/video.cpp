@@ -887,6 +887,11 @@ static std::vector<std::pair<GuestSurface*, uint32_t>> g_surfaceCache;
 
 static std::vector<GuestResource*> g_tempResources[NUM_FRAMES];
 static std::vector<std::unique_ptr<RenderBuffer>> g_tempBuffers[NUM_FRAMES];
+// Resource release commands can arrive from several guest threads. A pointer
+// must enter deferred/frame retirement only once; destroying the same placement
+// object twice corrupts the guest heap and leaves arbitrary native pointers in
+// pending barrier state. This set is owned exclusively by the render thread.
+static ankerl::unordered_dense::set<GuestResource*> g_scheduledResourceDestructions;
 
 template<GuestPrimitiveType PrimitiveType>
 struct PrimitiveIndexData
@@ -1116,6 +1121,11 @@ static void DestructTempResources()
 
             if (texture->patchedTexture != nullptr)
             {
+                // The patched controller-icon texture is a separately bound
+                // native wrapper owned by the parent. Remove its barriers and
+                // active bindings before unique_ptr destroys it; cleaning only
+                // the parent left a dead wrapper queued for the next frame.
+                removeTextureReferences(texture->patchedTexture.get());
                 SetTextureDescriptor(texture->patchedTexture->descriptorIndex,
                     g_blankTextures[TEXTURE_DESCRIPTOR_NULL_TEXTURE_2D].get(),
                     RenderTextureLayout::SHADER_READ,
@@ -1211,6 +1221,7 @@ static void DestructTempResources()
         }
         }
 
+        g_scheduledResourceDestructions.erase(resource);
         g_userHeap.Free(resource);
     }
 
@@ -1344,32 +1355,14 @@ static RenderBufferReference UploadMaliGuestVertexBuffer(
         return {};
     }
 
-    // The D3D stream offset is part of the byte-ordering boundary.  Swapping
-    // from byte zero is wrong when a stream starts at a non-word-aligned
-    // offset: every subsequent 32-bit lane is then rotated relative to the
-    // declaration, which presents as stretched and morphing meshes on Mali.
-    // Keep the prefix intact and begin the lane conversion at the active
-    // stream offset.  The allocation remains buffer-relative because the
-    // caller binds it at `allocation + streamOffset`.
-    auto allocation = g_uploadAllocators[g_frame].allocate(buffer->dataSize, alignof(uint32_t));
-    auto* destination = allocation.memory;
-    const auto* sourceBytes = static_cast<const uint8_t*>(source);
-    if (streamOffset != 0)
-        memcpy(destination, sourceBytes, streamOffset);
-
-    const uint32_t convertSize = buffer->dataSize - streamOffset;
-    const uint32_t wordCount = convertSize / sizeof(uint32_t);
-    for (uint32_t i = 0; i < wordCount; ++i)
-    {
-        uint32_t word;
-        memcpy(&word, sourceBytes + streamOffset + i * sizeof(uint32_t), sizeof(word));
-        word = ByteSwap(word);
-        memcpy(destination + streamOffset + i * sizeof(uint32_t), &word, sizeof(word));
-    }
-    const uint32_t convertedSize = wordCount * sizeof(uint32_t);
-    if (convertedSize != convertSize)
-        memcpy(destination + streamOffset + convertedSize,
-            sourceBytes + streamOffset + convertedSize, convertSize - convertedSize);
+    // Match the established desktop upload contract exactly: Xbox vertex
+    // buffers are arrays of big-endian 32-bit lanes beginning at buffer byte
+    // zero. The stream offset selects a byte inside the converted buffer; it
+    // does not establish a new endian boundary. Starting conversion at a
+    // non-word-aligned stream offset rotated every later lane and produced the
+    // screen-wide triangles and morphing UI/level geometry seen on SM-X110.
+    auto allocation = g_uploadAllocators[g_frame].allocateByteSwapped32(
+        source, buffer->dataSize, alignof(uint32_t));
 
     cache.reference = allocation.buffer->at(allocation.offset);
     cache.frameSerial = g_frameUploadSerial[g_frame];
@@ -2833,10 +2826,10 @@ static void BeginCommandList()
                 g_deferredMaliResourceDestructions.push_back(resource);
             else
             {
-                RenderCommand destruction{};
-                destruction.type = RenderCommandType::DestructResource;
-                destruction.destructResource.resource = resource;
-                ProcDestructResource(destruction);
+                // ProcDestructResource inserted this pointer in the scheduled
+                // set before deferring it. Move it directly to frame retirement
+                // rather than treating the replay as a duplicate command.
+                g_tempResources[g_frame].push_back(resource);
             }
         }
     }
@@ -3789,6 +3782,12 @@ static void DestructResource(GuestResource* resource)
 static void ProcDestructResource(const RenderCommand& cmd)
 {
     const auto& args = cmd.destructResource;
+    if (args.resource == nullptr ||
+        !g_scheduledResourceDestructions.emplace(args.resource).second)
+    {
+        return;
+    }
+
     // A deferred Mali upload owns the native texture pointer until the render
     // thread has validated and consumed it. Never destroy the guest wrapper
     // in the gap between ExecuteCommandList and the next BeginCommandList;
@@ -4619,6 +4618,20 @@ static void DrawImGui()
     TouchControls::Draw();
 #endif
     DrawProfiler();
+#ifdef __ANDROID__
+    // Renderer modifiers are persistent push-constant state. Several game UI
+    // paths intentionally leave gradient/additive/text transforms active for
+    // later commands in their own draw list. Touch controls live in ImGui's
+    // foreground list, so the final callback state before ImGui::Render must be
+    // neutral or their independent hit boxes work while all visuals disappear.
+    ResetGradient();
+    SetShaderModifier(IMGUI_SHADER_MODIFIER_NONE);
+    SetOrigin({ 0.0f, 0.0f });
+    SetScale({ 1.0f, 1.0f });
+    ResetOutline();
+    ResetProceduralOrigin();
+    ResetAdditive();
+#endif
     ImGui::Render();
 
     auto drawData = ImGui::GetDrawData();
@@ -5951,7 +5964,16 @@ static void ProcSetViewport(const RenderCommand& cmd)
 
 static void SetTexture(GuestDevice* device, uint32_t index, GuestTexture* texture) 
 {
-    // printf("SetTexture: %x %d %x\n", device, index, texture);
+    // A corrupt or unsupported guest sampler index must not write beyond the
+    // 16-entry texture/shared-constant arrays. Such a write corrupts adjacent
+    // render state and later appears as unrelated dead VkImage pointers.
+    if (index >= std::size(g_textures))
+    {
+        static std::atomic<uint32_t> warningCount{ 0 };
+        if (warningCount.fetch_add(1, std::memory_order_relaxed) < 16)
+            LOGF_WARNING("Ignoring out-of-range texture stage {}.", index);
+        return;
+    }
 
     if (Config::IsControllerIconsPS3() && texture != nullptr && texture->patchedTexture != nullptr)
         texture = texture->patchedTexture.get();
@@ -5995,6 +6017,8 @@ static void SetSurface(uint32_t index, GuestSurface* surface)
 static void ProcSetTexture(const RenderCommand& cmd)
 {
     const auto& args = cmd.setTexture;
+    if (args.index >= std::size(g_textures))
+        return;
 
     // If a pending copy operation is detected, set the source surface. The indices will be fixed later if flushing is necessary.
     bool shouldSetTexture = true;
@@ -6631,17 +6655,23 @@ static void FlushRenderStateForMainThread(GuestDevice* device, LocalRenderComman
     dirtyFlags = device->dirtyFlags[1].get();
     if (dirtyFlags != 0)
     {
-        int startRegister = std::countl_zero(dirtyFlags);
-        int endRegister = std::min(56, 64 - std::countr_zero(dirtyFlags));
+        const int startRegister = std::countl_zero(dirtyFlags);
+        const int endRegister = std::min(56, 64 - std::countr_zero(dirtyFlags));
 
-        uint32_t index = startRegister * 16;
-        uint32_t size = (endRegister - startRegister) * 64;
+        // The renderer exposes 56 groups (224 float4 registers) to pixel
+        // shaders. Dirty bits above that range are guest bookkeeping and must
+        // not make the signed subtraction wrap into a multi-gigabyte command.
+        if (startRegister < endRegister)
+        {
+            const uint32_t index = uint32_t(startRegister) * 16;
+            const uint32_t size = uint32_t(endRegister - startRegister) * 64;
 
-        auto& cmd = queue.enqueue();
-        cmd.type = RenderCommandType::SetPixelShaderConstants;
-        cmd.setPixelShaderConstants.memory = AllocateRenderCommandMemory(cmd, &device->pixelShaderFloatConstants[index], size);
-        cmd.setPixelShaderConstants.index = index;
-        cmd.setPixelShaderConstants.size = size;
+            auto& cmd = queue.enqueue();
+            cmd.type = RenderCommandType::SetPixelShaderConstants;
+            cmd.setPixelShaderConstants.memory = AllocateRenderCommandMemory(cmd, &device->pixelShaderFloatConstants[index], size);
+            cmd.setPixelShaderConstants.index = index;
+            cmd.setPixelShaderConstants.size = size;
+        }
 
         device->dirtyFlags[1] = 0;
     }
@@ -6726,8 +6756,16 @@ static void ProcSetSamplerState(const RenderCommand& cmd)
 
 static void ProcSetVertexShaderConstants(const RenderCommand& cmd)
 {
-    auto& args = cmd.setVertexShaderConstants;
-    assert((args.index * sizeof(uint32_t) + args.size) <= sizeof(g_vertexShaderConstants));
+    const auto& args = cmd.setVertexShaderConstants;
+    const size_t capacity = sizeof(g_vertexShaderConstants);
+    const size_t offset = size_t(args.index) * sizeof(uint32_t);
+    if (args.memory == nullptr || offset > capacity || args.size > capacity - offset)
+    {
+        LOGF_WARNING("Ignoring out-of-range vertex constants: index {}, size {}.",
+            args.index, args.size);
+        ReleaseRenderCommandMemory(cmd);
+        return;
+    }
 
     memcpy(&g_vertexShaderConstants[args.index], args.memory, args.size);
     ReleaseRenderCommandMemory(cmd);
@@ -6736,8 +6774,16 @@ static void ProcSetVertexShaderConstants(const RenderCommand& cmd)
 
 static void ProcSetPixelShaderConstants(const RenderCommand& cmd)
 {
-    auto& args = cmd.setPixelShaderConstants;
-    assert((args.index * sizeof(uint32_t) + args.size) <= sizeof(g_pixelShaderConstants));
+    const auto& args = cmd.setPixelShaderConstants;
+    const size_t capacity = sizeof(g_pixelShaderConstants);
+    const size_t offset = size_t(args.index) * sizeof(uint32_t);
+    if (args.memory == nullptr || offset > capacity || args.size > capacity - offset)
+    {
+        LOGF_WARNING("Ignoring out-of-range pixel constants: index {}, size {}.",
+            args.index, args.size);
+        ReleaseRenderCommandMemory(cmd);
+        return;
+    }
 
     memcpy(&g_pixelShaderConstants[args.index], args.memory, args.size);
     ReleaseRenderCommandMemory(cmd);
@@ -10832,6 +10878,22 @@ GUEST_FUNCTION_HOOK(sub_82559480, D3DDevice_EndTiling);
 
 int D3DDevice_BeginShaderConstantF4(GuestDevice* device, uint32_t isPixelShader, uint32_t startRegister, be<uint32_t>* cachedConstantData, be<uint32_t>* writeCombinedConstantData, uint32_t vectorCount)
 {
+    constexpr uint32_t RegisterCapacity =
+        std::extent_v<decltype(GuestDevice::vertexShaderFloatConstants)> / 4;
+    if (device == nullptr || cachedConstantData == nullptr ||
+        writeCombinedConstantData == nullptr || vectorCount == 0 ||
+        startRegister >= RegisterCapacity ||
+        vectorCount > RegisterCapacity - startRegister)
+    {
+        if (cachedConstantData != nullptr)
+            *cachedConstantData = 0;
+        if (writeCombinedConstantData != nullptr)
+            *writeCombinedConstantData = 0;
+        LOGF_WARNING("Ignoring invalid shader constant range: start {}, count {}.",
+            startRegister, vectorCount);
+        return 0;
+    }
+
     uint32_t* constants;
     be<uint64_t>* dirtyFlags;
 
