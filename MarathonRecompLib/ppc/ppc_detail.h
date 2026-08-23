@@ -26,8 +26,17 @@ extern "C" void PPCIndirectCallMissing(PPCContext& ctx, uint8_t* base, uint32_t 
     do \
     { \
         const uint32_t ppcCallTarget_ = (uint32_t)(x); \
-        PPCFunc* ppcCallFn_ = \
-            (uint64_t(ppcCallTarget_) - PPC_CODE_BASE < PPC_IMAGE_BASE + PPC_IMAGE_SIZE - PPC_CODE_BASE) \
+        // Do not rely on unsigned range subtraction here. A corrupted guest
+        // vtable/function pointer such as 0x00000002 would otherwise be easy
+        // to misclassify if the generated constants change type or base. PPC
+        // code targets must be aligned and inside the actual image interval.
+        const uint64_t ppcTarget_ = ppcCallTarget_;
+        const uint64_t ppcImageBegin_ = PPC_CODE_BASE;
+        const uint64_t ppcImageEnd_ = PPC_IMAGE_BASE + PPC_IMAGE_SIZE;
+        PPCFunc* ppcCallFn_ =
+            (ppcTarget_ >= ppcImageBegin_ &&
+             ppcTarget_ < ppcImageEnd_ &&
+             (ppcCallTarget_ & 3u) == 0) \
                 ? PPC_LOOKUP_FUNC(base, ppcCallTarget_) \
                 : nullptr; \
         if (ppcCallFn_ != nullptr) \
