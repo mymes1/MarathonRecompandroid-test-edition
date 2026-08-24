@@ -3,7 +3,6 @@
 #include <os/logger.h>
 
 #include <atomic>
-#include <cerrno>
 #include <cstring>
 
 Memory::Memory()
@@ -41,13 +40,12 @@ Memory::Memory()
     // permissions remaining unchanged. Zero it so absorbed reads are deterministic.
     if (mprotect(base, 4096, PROT_READ | PROT_WRITE) != 0)
     {
-        LOGF_ERROR("Unable to make Android guest null page readable/writable: errno {}.", errno);
         munmap(base, PPC_MEMORY_SIZE);
         base = nullptr;
         return;
     }
     memset(base, 0, 4096);
-    LOGF_WARNING("Android guest null page enabled at {:p} (4096 bytes RW).", static_cast<void*>(base));
+    guestNullPageReadable = true;
 #else
     mprotect(base, 4096, PROT_NONE);
 #endif

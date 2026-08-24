@@ -8,6 +8,10 @@
 struct Memory
 {
     uint8_t* base{};
+    // Set during static construction without invoking the logger. main() emits
+    // the diagnostic only after os::logger::Init(), avoiding cross-TU static
+    // initialization order hazards on Android.
+    bool guestNullPageReadable{};
 
     Memory();
 

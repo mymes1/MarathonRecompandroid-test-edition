@@ -20,8 +20,8 @@ android {
         applicationId "com.sega.marathon"
         minSdkVersion 29
         targetSdkVersion 35
-        versionCode 7
-        versionName "1.0.6"
+        versionCode 8
+        versionName "1.0.7"
     }
     // CI provides the release keystore through environment variables (see
     // .github/workflows/android.yml); local release builds stay unsigned.

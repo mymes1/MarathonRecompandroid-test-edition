@@ -175,6 +175,10 @@ int main(int argc, char *argv[])
         LOGN_WARNING("OS does not support registry.");
 
     os::logger::Init();
+#ifdef __ANDROID__
+    if (g_memory.guestNullPageReadable)
+        LOGN_WARNING("Android guest null page enabled (4096 bytes RW).");
+#endif
 
     PreloadContext preloadContext;
     preloadContext.PreloadExecutable();
