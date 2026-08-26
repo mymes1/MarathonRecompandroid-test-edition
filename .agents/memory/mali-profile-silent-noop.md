@@ -32,3 +32,28 @@ cannot distinguish "workaround applied and insufficient" from "workaround never 
   upload alignments, viewport/window sizes and quality settings.
 - When triaging a glitch report on this device family, read `maliProfile=` first. If it says
   `DISABLED`, extend detection — do not patch the renderer.
+
+## Confirmed on device (SM-X110, build 1.0.7) — detection is NOT the failure
+
+The diagnostic did its job and **refuted** the detection-failure hypothesis:
+
+```
+[LogMaliDetection] [renderer] Vulkan device name='Mali-G57 MC2' | ro.product.model='SM-X110'
+  ro.product.device='gta9wifi' ro.soc.model='MT8781V/NA' ro.hardware.vulkan='mali'
+  ro.hardware.egl='meow' ro.board.platform='mt6789'
+[CreateHostDevice] [renderer] Mali compatibility profile: ENABLED.
+[LogRendererProfile] [renderer] maliProfile=ENABLED texturePath=ETC2/EAC CPU transcode
+  descriptors=1024textures/1024samplers uploadPitchAlign=1 placementAlign=4
+```
+
+So the profile engages and the workarounds are live. Two things the same log settled:
+
+- **The real visual problem was resolution scale** — see
+  [android-resolution-scale-lookalike](android-resolution-scale-lookalike.md).
+- **Touch controls are genuinely emitted, not skipped.** `[touch] drawing overlay:
+  viewport=1340x800 window=1340x800 imguiDisplay=1340x800 edit=false policy=0` — all three
+  coordinate spaces agree, so "responds to taps but never visible" is **not** layout or
+  clipping. It is renderer state or the draw being discarded downstream. Still open.
+  Note `SetGraphicsPushConstants(rangeIndex, data, offset=0, size=0)` uploads the *whole*
+  range when `size == 0` (`plume_vulkan.cpp`), so the initial full-struct upload including
+  `scale = (1,1)` is correct — that is not the cause.

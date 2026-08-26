@@ -21,3 +21,4 @@
 - [Android Mali CSD safe path](android-csd-safe-path.md) — bypass CSD aspect-ratio vertex rewriting on SM-X110/Mali to avoid UI/loading wedges.
 - [Mali profile can silently no-op](mali-profile-silent-noop.md) — a clean log.txt is not evidence of health: every Mali workaround AND its validation logging are gated on g_isMali. Read `maliProfile=` first.
 - Guest vertex declaration `stream` is `be<uint16_t>` (0..65535) but indexes fixed-size 16-entry arrays; validate on both producer (`CreateVertexDeclarationWithoutAddRef`) and consumer (`CreateGraphicsPipeline`) sides.
+- [Android resolution scale is a visual-corruption lookalike](android-resolution-scale-lookalike.md) — a forced 0.25 scale renders SM-X110 at 335x200 upscaled 4x: looks exactly like geometry/texture corruption while the renderer is clean. Read `resolutionScale=` before blaming the driver.

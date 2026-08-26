@@ -2987,7 +2987,10 @@ static void ApplyLowEndDefaults()
     // logic. Users who already saved a value are never overridden.
     // MSAA triggers rendering artifacts on Turnip a7xx gen3 and is never worth its cost here.
     ApplyLowEndDefault(Config::AntiAliasing, EAntiAliasing::Off, changed);
-    ApplyLowEndDefault(Config::ResolutionScale, 0.25f, changed);
+    // Native resolution. This runs after ApplyMaliRuntimeOverrides, so leaving it
+    // at 0.25f would re-apply the 4x upscale on a fresh install (no config file
+    // yet) and undo the Mali override. Lower it from Options > Video if needed.
+    ApplyLowEndDefault(Config::ResolutionScale, 1.0f, changed);
     ApplyLowEndDefault(Config::ShadowResolution, EShadowResolution::x512, changed);
     ApplyLowEndDefault(Config::ReflectionResolution, EReflectionResolution::Eighth, changed);
     ApplyLowEndDefault(Config::AnisotropicFiltering, uint32_t(1), changed);
@@ -3037,15 +3040,20 @@ static void ApplyMaliRuntimeOverrides()
     ForceMaliConfig(Config::AnisotropicFiltering, uint32_t(1), changed);
     ForceMaliConfig(Config::RadialBlur, ERadialBlur::Off, changed);
 
-    // Keep resolution within the tested Mali path.  The app still allows lower
-    // values, but old config files from desktop/Adreno builds must not start the
-    // tablet at 100%+ resolution and exhaust the small memory budget.
-    if (Config::ResolutionScale.Value > 0.5f)
+    // Resolution scale on Mali was previously forced to 0.25, which renders the
+    // 3D scene at 335x200 on this 1340x800 panel and upscales it 4x. That
+    // upscaling reads as constantly stretching/morphing geometry and smeared
+    // textures - visually indistinguishable from renderer corruption, while
+    // every renderer diagnostic stays clean. It also silently discarded the
+    // user's explicit choice on every launch, so the Options setting could never
+    // be raised. Render at native resolution by default and only clamp values
+    // that exceed the panel, which is what actually threatens the memory budget.
+    if (Config::ResolutionScale.Value > 1.0f)
     {
-        Config::ResolutionScale = 0.25f;
+        Config::ResolutionScale = 1.0f;
         changed = true;
     }
-    Config::ResolutionScale.DefaultValue = 0.25f;
+    Config::ResolutionScale.DefaultValue = 1.0f;
 
     if (changed)
         Config::Save();

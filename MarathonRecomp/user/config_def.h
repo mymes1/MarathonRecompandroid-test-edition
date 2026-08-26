@@ -63,10 +63,12 @@ CONFIG_DEFINE_ENUM("Video", EWindowState, WindowState, EWindowState::Normal, fal
 CONFIG_DEFINE_LOCALISED("Video", int32_t, Monitor, 0, false);
 CONFIG_DEFINE_ENUM_LOCALISED("Video", EAspectRatio, AspectRatio, EAspectRatio::Auto, false);
 #ifdef __ANDROID__
-// The Adreno-class mobile GPUs this port targets sit at ~40 ms/frame at native
-// resolution; 50% scale + no MSAA is the measured sweet spot for playable
-// framerates, so the Android build defaults there instead of the desktop values.
-CONFIG_DEFINE_LOCALISED("Video", float, ResolutionScale, 0.25f, false);
+// Default to native resolution, matching desktop. This was 0.25f, which renders
+// a 1340x800 panel at 335x200 and upscales it 4x - that reads as constantly
+// stretching geometry and smeared textures, and is easily mistaken for renderer
+// corruption. Users on weaker GPUs can lower it in Options > Video; the choice
+// now persists across launches instead of being reset.
+CONFIG_DEFINE_LOCALISED("Video", float, ResolutionScale, 1.0f, false);
 #else
 CONFIG_DEFINE_LOCALISED("Video", float, ResolutionScale, 1.0f, false);
 #endif
