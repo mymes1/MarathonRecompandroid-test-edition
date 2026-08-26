@@ -2391,7 +2391,125 @@ static bool IsGalaxyTabA9()
     // and does not need this cap, but is not harmed by it either.
     return strncmp(model, "SM-X11", 6) == 0;
 }
+
+// Secondary Mali signal for devices whose Vulkan device name is generic or
+// unavailable. The Galaxy Tab A9 (SM-X110, MediaTek Helio G99) reports
+// ro.hardware.vulkan=mali while its EGL driver reports "meow".
+static bool IsMaliSystemProperty()
+{
+    static const char* const properties[] =
+    {
+        "ro.hardware.vulkan",
+        "ro.hardware.egl",
+        "ro.hardware.gralloc",
+        "ro.soc.model",
+    };
+
+    for (const char* property : properties)
+    {
+        char value[PROP_VALUE_MAX]{};
+        __system_property_get(property, value);
+
+        std::string lowered(value);
+        std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+            [](unsigned char c) { return char(std::tolower(c)); });
+
+        if (lowered.find("mali") != std::string::npos ||
+            lowered.find("meow") != std::string::npos)
+            return true;
+    }
+
+    return false;
+}
+
+// Records every detection source verbatim. This exists because a silently empty
+// device property makes the entire Mali profile a no-op, and the resulting
+// geometry/texture corruption is otherwise indistinguishable from a renderer
+// bug - the renderer logs no warnings at all when the profile never engages.
+static void LogMaliDetection(const std::string& deviceName)
+{
+    static const char* const properties[] =
+    {
+        "ro.product.model",
+        "ro.product.device",
+        "ro.soc.model",
+        "ro.hardware.vulkan",
+        "ro.hardware.egl",
+        "ro.board.platform",
+    };
+
+    std::string line;
+    for (const char* property : properties)
+    {
+        char value[PROP_VALUE_MAX]{};
+        __system_property_get(property, value);
+
+        line += property;
+        line += "='";
+        line += value[0] != '\0' ? value : "<empty>";
+        line += "' ";
+    }
+
+    LOGF("[renderer] Vulkan device name='{}' | {}", deviceName, line);
+}
+
+// Single source of truth for the Mali compatibility profile. Both call sites
+// must agree: if texture transcoding and the descriptor/pipeline workarounds
+// disagree within one run, the renderer renders with one profile while textures
+// were prepared for another.
+static bool IsMaliDevice(const std::string& loweredDeviceName)
+{
+    return loweredDeviceName.find("mali") != std::string::npos ||
+           loweredDeviceName.find("meow") != std::string::npos ||
+           IsGalaxyTabA9() ||
+           IsMaliSystemProperty();
+}
 #endif
+
+// One-shot summary of the renderer's effective configuration, written after the
+// viewport is computed. A "clean" log.txt proves nothing on its own: the draw
+// validation that would warn about malformed geometry is gated on the Mali
+// profile, so a device silently running the desktop path logs nothing while
+// rendering corrupt output. This block makes the effective path explicit.
+static void LogRendererProfile()
+{
+    const RenderDeviceDescription description = g_device->getDescription();
+
+    int windowWidth = 0;
+    int windowHeight = 0;
+    GameWindow::GetSizeInPixels(&windowWidth, &windowHeight);
+
+    const char* texturePath =
+        g_capabilities.textureCompressionBC ? "native BC" :
+        g_capabilities.textureCompressionETC2 ? "ETC2/EAC CPU transcode" : "RGBA CPU decode";
+
+    LOGF("[renderer] gpu='{}' vendor={} type={} driver=0x{:X} vram={}MB",
+        description.name,
+        static_cast<uint32_t>(description.vendor),
+        static_cast<uint32_t>(description.type),
+        description.driverVersion,
+        description.dedicatedVideoMemory / (1024 * 1024));
+
+    LOGF("[renderer] maliProfile={} texturePath={} descriptors={}textures/{}samplers uploadPitchAlign={} placementAlign={}",
+        g_isMali ? "ENABLED" : "DISABLED",
+        texturePath,
+        g_textureDescriptorSize,
+        g_samplerDescriptorSize,
+        g_uploadPitchAlignment,
+        g_uploadPlacementAlignment);
+
+    LOGF("[renderer] viewport={}x{} window={}x{} resolutionScale={:.2} fps={} msaa={} shadows={} reflections={} aniso={}",
+        Video::s_viewportWidth,
+        Video::s_viewportHeight,
+        windowWidth,
+        windowHeight,
+        Config::ResolutionScale.Value,
+        static_cast<uint32_t>(Config::FPS.Value),
+        static_cast<uint32_t>(Config::AntiAliasing.Value),
+        static_cast<uint32_t>(Config::ShadowResolution.Value),
+        static_cast<uint32_t>(Config::ReflectionResolution.Value),
+        Config::AnisotropicFiltering.Value);
+}
 
 static std::unique_ptr<GuestTexture> g_imFontTexture;
 static std::unique_ptr<RenderPipelineLayout> g_imPipelineLayout;
@@ -3114,8 +3232,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
         std::string deviceName = g_device->getDescription().name;
         std::transform(deviceName.begin(), deviceName.end(), deviceName.begin(),
             [](unsigned char c) { return char(std::tolower(c)); });
-        if (deviceName.find("mali") != std::string::npos ||
-            deviceName.find("meow") != std::string::npos || IsGalaxyTabA9())
+        if (IsMaliDevice(deviceName))
         {
             if (g_capabilities.textureCompressionETC2)
                 LOG("Mali compatibility path: using memory-efficient ETC2/EAC texture transcode.");
@@ -3152,16 +3269,19 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     // to the model-number check for devices where the GPU name is not yet available.
     // Apply before loading cached shaders or allocating descriptor sets.
     {
-        std::string deviceName = g_device->getDescription().name;
+        const std::string rawDeviceName = g_device->getDescription().name;
+        std::string deviceName = rawDeviceName;
         std::transform(deviceName.begin(), deviceName.end(), deviceName.begin(),
             [](unsigned char c) { return char(std::tolower(c)); });
-        const bool isMali = deviceName.find("mali") != std::string::npos ||
-                            deviceName.find("meow") != std::string::npos ||
-                            IsGalaxyTabA9();
+
+        LogMaliDetection(rawDeviceName);
+
+        const bool isMali = IsMaliDevice(deviceName);
 
         if (isMali)
         {
             g_isMali = true;
+            LOG("[renderer] Mali compatibility profile: ENABLED.");
 
             g_textureDescriptorSize = uint32_t(std::min<size_t>(g_textureDescriptorSize, MALI_TEXTURE_DESCRIPTOR_SIZE));
             g_samplerDescriptorSize = uint32_t(std::min<size_t>(g_samplerDescriptorSize, MALI_TEXTURE_DESCRIPTOR_SIZE));
@@ -3208,6 +3328,20 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
             LOG("Mali compatibility path: using tight upload-buffer row packing to avoid bufferRowLength driver bug.");
 
             ApplyMaliRuntimeOverrides();
+        }
+        else
+        {
+            // This is the diagnostic that matters on SM-X110. Every geometry and
+            // texture workaround - canonical 32-bit-lane vertex conversion, tight
+            // upload row packing, triangle-fan emulation, conservative descriptor
+            // limits - lives behind g_isMali, and all of the validation that would
+            // otherwise warn about bad draws is gated on it too. If this line
+            // appears, the tablet is rendering through the desktop code path and
+            // the log will stay completely clean while geometry stretches and
+            // textures morph. Detection must be extended, not the renderer.
+            LOG_WARNING("[renderer] Mali compatibility profile: DISABLED - no Mali/Tab A9 signal found. "
+                "Xbox big-endian vertex buffers will be bound unconverted and texture uploads will use "
+                "desktop row padding. Expect stretched/morphing geometry and textures on Mali hardware.");
         }
     }
 
@@ -3646,6 +3780,7 @@ bool Video::CreateHostDevice(const char *sdlVideoDriver, bool graphicsApiRetry)
     g_backBuffer->textureHolder = g_device->createTexture(RenderTextureDesc::Texture2D(1, 1, 1, BACKBUFFER_FORMAT, RenderTextureFlag::RENDER_TARGET));
 
     Video::ComputeViewportDimensions();
+    LogRendererProfile();
     CheckSwapChain();
     BeginCommandList();
 
@@ -6393,6 +6528,14 @@ static std::unique_ptr<RenderPipeline> CreateGraphicsPipeline(const PipelineStat
     for (size_t i = 0; i < pipelineState.vertexDeclaration->inputElementCount; i++)
     {
         auto& inputElement = pipelineState.vertexDeclaration->inputElements[i];
+
+        // Defence in depth: slotIndex originates from a guest vertex
+        // declaration. CreateVertexDeclarationWithoutAddRef rejects out-of-range
+        // streams, but a cached or hand-built declaration must not be able to
+        // index past these fixed-size arrays in a release build.
+        if (inputElement.slotIndex >= 16)
+            continue;
+
         auto& inputSlotIndex = inputSlotIndices[inputElement.slotIndex];
     
         if (inputSlotIndex == NULL)
@@ -7583,9 +7726,18 @@ static GuestVertexDeclaration* CreateVertexDeclarationWithoutAddRef(GuestVertexE
                 }
             }
 
-            if (resolvedLocation == ~0)
+            // A guest vertex declaration carries its stream index as a 16-bit
+            // value (be<uint16_t>, so 0..65535) and only stream 0xFF terminates
+            // the element list, so a malformed declaration can name a stream
+            // outside the renderer's 16 binding slots. Downstream,
+            // CreateGraphicsPipeline indexes the fixed-size
+            // inputSlotIndices/inputSlots/vertexStrides arrays with this value,
+            // so reject it here; a release build compiles the assertion out and
+            // would otherwise take an out-of-bounds stack read/write.
+            if (resolvedLocation == ~0 || vertexElement->stream >= 16)
             {
-                // Bound but not used by any guest shaders.
+                // Bound but not used by any guest shaders, or names a stream the
+                // renderer has no binding slot for.
                 ++vertexElement;
                 continue;
             }
@@ -7683,7 +7835,13 @@ static GuestVertexDeclaration* CreateVertexDeclarationWithoutAddRef(GuestVertexE
                 break;
             }
 
-            vertexDeclaration->vertexStreams[vertexElement->stream] = true;
+            // Locally bounded even though the loop above already rejects
+            // out-of-range streams: vertexStreams has one entry per binding slot
+            // while `stream` is a guest-controlled 16-bit value, and an
+            // unchecked index here writes past the end of the declaration
+            // object in release builds.
+            if (uint32_t(vertexElement->stream) < std::size(vertexDeclaration->vertexStreams))
+                vertexDeclaration->vertexStreams[vertexElement->stream] = true;
 
             ++vertexElement;
         }

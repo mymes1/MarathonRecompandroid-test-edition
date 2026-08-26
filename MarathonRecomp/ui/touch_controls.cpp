@@ -4,6 +4,7 @@
 #include "game_window.h"
 #include "options_menu.h"
 #include <gpu/video.h>
+#include <os/logger.h>
 #include <sdl_listener.h>
 #include <user/config.h>
 #include <algorithm>
@@ -636,6 +637,25 @@ void TouchControls::Draw()
     // scissor is changed between overlay batches: input still works, but the
     // foreground controls can be clipped out completely.
     DrawListClipScope clipScope(dl, { 0.0f, 0.0f }, { vw, vh });
+
+    // One-shot record of the coordinate spaces the overlay is emitted into.
+    // "Touch controls respond to taps but are never visible" is otherwise
+    // impossible to attribute: it is consistent both with the overlay being
+    // laid out or clipped outside the visible area and with the primitives
+    // being drawn and then discarded by renderer state. Comparing the ImGui
+    // display size against the viewport/window the layout was computed from
+    // separates those cases on the first frame the controls are shown.
+    static bool s_loggedGeometry = false;
+    if (!s_loggedGeometry)
+    {
+        s_loggedGeometry = true;
+
+        const ImGuiIO& io = ImGui::GetIO();
+        LOGF("[touch] drawing overlay: viewport={}x{} window={}x{} imguiDisplay={}x{} edit={} policy={}",
+            int(vw), int(vh), pw, ph,
+            int(io.DisplaySize.x), int(io.DisplaySize.y),
+            g_edit, int(Config::TouchControls.Value));
+    }
 
     auto tapBox = [&](ImVec2 c, float hw, float hh, const char* label, bool accent)
     {

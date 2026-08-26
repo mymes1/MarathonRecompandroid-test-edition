@@ -19,3 +19,5 @@
 - [Android render command payload lifetime](android-render-command-payloads.md) — guest constants and DrawPrimitiveUP vertices need per-command owned memory, not frame-reused scratch storage.
 - [Mali triangle fan emulation](mali-triangle-fan.md) — native Vulkan triangle fans can form screen-sized wedges on SM-X110; generate triangle-list indices instead.
 - [Android Mali CSD safe path](android-csd-safe-path.md) — bypass CSD aspect-ratio vertex rewriting on SM-X110/Mali to avoid UI/loading wedges.
+- [Mali profile can silently no-op](mali-profile-silent-noop.md) — a clean log.txt is not evidence of health: every Mali workaround AND its validation logging are gated on g_isMali. Read `maliProfile=` first.
+- Guest vertex declaration `stream` is `be<uint16_t>` (0..65535) but indexes fixed-size 16-entry arrays; validate on both producer (`CreateVertexDeclarationWithoutAddRef`) and consumer (`CreateGraphicsPipeline`) sides.
