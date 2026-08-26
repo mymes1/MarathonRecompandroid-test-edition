@@ -4834,18 +4834,50 @@ static void ProcDrawImGui(const RenderCommand& cmd)
     ImRect clipRect{};
     bool hasClipRect = false;
 
+    // One-shot inventory of what actually reaches the renderer. The touch
+    // controls overlay is provably emitted - the [touch] log line shows
+    // viewport, window and ImGui display all equal - yet never appears, which
+    // leaves two possibilities: ImGui is not delivering its foreground list
+    // here, or the GPU is discarding those draws. These counts separate the two.
+    // Draw-list order is background, then window lists, then foreground, so the
+    // LAST entry is where the touch controls live.
+    static bool s_loggedDrawLists = false;
+    const bool logDrawLists = !s_loggedDrawLists;
+    if (logDrawLists)
+        s_loggedDrawLists = true;
+
+    // Dear ImGui's index type is compile-time configurable (ImDrawIdx). Derive
+    // the upload size and Vulkan index format from it instead of assuming
+    // 16-bit: a build that widens ImDrawIdx would otherwise upload half the
+    // index bytes and reinterpret them as R16, silently corrupting every
+    // overlay draw rather than failing loudly.
+    static_assert(sizeof(ImDrawIdx) == 2 || sizeof(ImDrawIdx) == 4,
+        "Unsupported ImDrawIdx width; extend the index format selection below.");
+    constexpr RenderFormat imIndexFormat =
+        sizeof(ImDrawIdx) == 2 ? RenderFormat::R16_UINT : RenderFormat::R32_UINT;
+
     for (int i = 0; i < drawData.CmdListsCount; i++)
     {
         auto& drawList = drawData.CmdLists[i];
 
+        if (logDrawLists)
+        {
+            LOGF("[imgui] drawList[{}/{}] vtx={} idx={} cmds={}{}",
+                i, drawData.CmdListsCount,
+                drawList->VtxBuffer.Size,
+                drawList->IdxBuffer.Size,
+                drawList->CmdBuffer.Size,
+                i == drawData.CmdListsCount - 1 ? "  <- foreground (touch controls)" : "");
+        }
+
         auto vertexBufferAllocation = g_uploadAllocators[g_frame].allocate<false>(drawList->VtxBuffer.Data, drawList->VtxBuffer.Size * sizeof(ImDrawVert), alignof(ImDrawVert));
-        auto indexBufferAllocation = g_uploadAllocators[g_frame].allocate<false>(drawList->IdxBuffer.Data, drawList->IdxBuffer.Size * sizeof(uint16_t), alignof(uint16_t));
+        auto indexBufferAllocation = g_uploadAllocators[g_frame].allocate<false>(drawList->IdxBuffer.Data, drawList->IdxBuffer.Size * sizeof(ImDrawIdx), alignof(ImDrawIdx));
 
         const RenderVertexBufferView vertexBufferView(vertexBufferAllocation.buffer->at(vertexBufferAllocation.offset), drawList->VtxBuffer.Size * sizeof(ImDrawVert));
         const RenderInputSlot inputSlot(0, sizeof(ImDrawVert));
         commandList->setVertexBuffers(0, &vertexBufferView, 1, &inputSlot);
 
-        const RenderIndexBufferView indexBufferView(indexBufferAllocation.buffer->at(indexBufferAllocation.offset), drawList->IdxBuffer.Size * sizeof(uint16_t), RenderFormat::R16_UINT);
+        const RenderIndexBufferView indexBufferView(indexBufferAllocation.buffer->at(indexBufferAllocation.offset), drawList->IdxBuffer.Size * sizeof(ImDrawIdx), imIndexFormat);
         commandList->setIndexBuffer(&indexBufferView);
 
         for (int j = 0; j < drawList->CmdBuffer.Size; j++)
@@ -7750,11 +7782,25 @@ static GuestVertexDeclaration* CreateVertexDeclarationWithoutAddRef(GuestVertexE
                 continue;
             }
 
+            // ConvertDeclType only asserts on an unmapped guest vertex type, and
+            // release builds compile that out. Feeding RenderFormat::UNKNOWN into
+            // a Vulkan vertex input attribute does not raise a validation error
+            // on Mali - it produces undefined fetch behaviour that shows up as
+            // corrupted meshes. Drop the element instead.
+            const RenderFormat elementFormat = ConvertDeclType(vertexElement->type);
+            if (elementFormat == RenderFormat::UNKNOWN)
+            {
+                LOGF_WARNING("Skipping vertex declaration element with unmapped D3D type {} (usage {}).",
+                    uint32_t(vertexElement->type), uint32_t(vertexElement->usage));
+                ++vertexElement;
+                continue;
+            }
+
             auto& inputElement = inputElements.emplace_back();
             inputElement.semanticName = ConvertDeclUsage(vertexElement->usage);
             inputElement.semanticIndex = vertexElement->usageIndex;
             inputElement.location = resolvedLocation;
-            inputElement.format = ConvertDeclType(vertexElement->type);
+            inputElement.format = elementFormat;
             inputElement.slotIndex = vertexElement->stream;
             inputElement.alignedByteOffset = vertexElement->offset;
 
