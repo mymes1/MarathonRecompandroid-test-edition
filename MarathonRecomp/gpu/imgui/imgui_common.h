@@ -76,6 +76,14 @@ union ImGuiCallbackData
 
 extern ImGuiCallbackData* AddImGuiCallback(ImGuiCallback callback);
 
+// Same, but emits the callback into a specific draw list. Needed because the
+// renderer modifiers are persistent push constants consumed at draw time: a list
+// that renders after other UI (notably ImGui's foreground list, which the touch
+// controls use) otherwise inherits whatever modifier the earlier lists left
+// behind. Publishing state into the list itself removes that dependency.
+struct ImDrawList;
+extern ImGuiCallbackData* AddImGuiCallbackTo(ImDrawList* drawList, ImGuiCallback callback);
+
 extern void ResetImGuiCallbacks();
 
 #endif

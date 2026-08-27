@@ -199,6 +199,49 @@ void ResetAdditive()
     SetAdditive(false);
 }
 
+void PushNeutralImGuiState(ImDrawList* drawList)
+{
+    if (drawList == nullptr)
+        return;
+
+    // A zeroed gradient also zeroes BoundsMin/BoundsMax, so the shader's
+    // `any(BoundsMin != BoundsMax)` test skips the gradient multiply entirely.
+    // Leaving BoundsMin != BoundsMax with zeroed colours would multiply every
+    // pixel by transparent black.
+    if (auto* gradient = AddImGuiCallbackTo(drawList, ImGuiCallback::SetGradient))
+        memset(&gradient->setGradient, 0, sizeof(gradient->setGradient));
+
+    if (auto* modifier = AddImGuiCallbackTo(drawList, ImGuiCallback::SetShaderModifier))
+        modifier->setShaderModifier.shaderModifier = IMGUI_SHADER_MODIFIER_NONE;
+
+    if (auto* origin = AddImGuiCallbackTo(drawList, ImGuiCallback::SetOrigin))
+    {
+        origin->setOrigin.origin[0] = 0.0f;
+        origin->setOrigin.origin[1] = 0.0f;
+    }
+
+    // Scale must be 1, not 0: the vertex shader computes
+    // Origin + (position - Origin) * Scale, so a zeroed scale collapses every
+    // vertex and the whole list degenerates to nothing.
+    if (auto* scale = AddImGuiCallbackTo(drawList, ImGuiCallback::SetScale))
+    {
+        scale->setScale.scale[0] = 1.0f;
+        scale->setScale.scale[1] = 1.0f;
+    }
+
+    if (auto* outline = AddImGuiCallbackTo(drawList, ImGuiCallback::SetOutline))
+        outline->setOutline.outline = 0.0f;
+
+    if (auto* procedural = AddImGuiCallbackTo(drawList, ImGuiCallback::SetProceduralOrigin))
+    {
+        procedural->setProceduralOrigin.proceduralOrigin[0] = 0.0f;
+        procedural->setProceduralOrigin.proceduralOrigin[1] = 0.0f;
+    }
+
+    if (auto* additive = AddImGuiCallbackTo(drawList, ImGuiCallback::SetAdditive))
+        additive->setAdditive.enabled = false;
+}
+
 void AddImageFlipped(ImTextureID texture, const ImVec2& min, const ImVec2& max, const ImVec2& uvMin, const ImVec2& uvMax, ImU32 col, bool flipHorz, bool flipVert)
 {
     auto drawList = ImGui::GetBackgroundDrawList();

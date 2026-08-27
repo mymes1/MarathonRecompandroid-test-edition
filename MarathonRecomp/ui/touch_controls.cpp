@@ -630,6 +630,16 @@ void TouchControls::Draw()
         curIds.push_back(fp.id);
 
     auto* dl = ImGui::GetForegroundDrawList();
+
+    // Publish a complete neutral modifier state into THIS list, before any of
+    // its geometry. The touch controls live in ImGui's foreground list while
+    // every renderer modifier callback is emitted into the background list, so
+    // without this they inherit whatever gradient/scale/modifier the earlier
+    // lists last set. A stale transparent gradient or a zeroed scale leaves the
+    // CPU-side hit testing completely correct while every primitive disappears -
+    // the reported "controls are hidden but work" symptom.
+    PushNeutralImGuiState(dl);
+
     ImFont* font = ImGui::GetFont();
     const float fontPx = vh * 0.030f;
     // Do not inherit a stale/empty clip rectangle from another ImGui list.

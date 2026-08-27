@@ -4761,20 +4761,16 @@ static void DrawImGui()
     TouchControls::Draw();
 #endif
     DrawProfiler();
-#ifdef __ANDROID__
+
     // Renderer modifiers are persistent push-constant state. Several game UI
     // paths intentionally leave gradient/additive/text transforms active for
-    // later commands in their own draw list. Touch controls live in ImGui's
-    // foreground list, so the final callback state before ImGui::Render must be
-    // neutral or their independent hit boxes work while all visuals disappear.
-    ResetGradient();
-    SetShaderModifier(IMGUI_SHADER_MODIFIER_NONE);
-    SetOrigin({ 0.0f, 0.0f });
-    SetScale({ 1.0f, 1.0f });
-    ResetOutline();
-    ResetProceduralOrigin();
-    ResetAdditive();
-#endif
+    // later commands in their own draw list, so the background list must end
+    // neutral before the window and foreground lists replay. Touch controls
+    // additionally re-publish this into their own foreground list, because that
+    // is the only guarantee that survives whatever renders in between.
+    // Not Android-gated: the invariant holds on every backend.
+    PushNeutralImGuiState(ImGui::GetBackgroundDrawList());
+
     ImGui::Render();
 
     auto drawData = ImGui::GetDrawData();

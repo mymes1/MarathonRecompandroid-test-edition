@@ -58,14 +58,47 @@ SM-X110 (Galaxy Tab A9 Wi-Fi), MT8781V/NA, Mali-G57 MC2, Android 15 / SDK 35, ar
   to draw and `r * 1.3` to test), so degenerate geometry would break input too — and input
   works. The layout is not degenerate.
 
-## Still open
+## Touch controls — structural cause and fix
 
-**Touch controls are emitted but invisible.** The device log proves emission:
-`[touch] drawing overlay: viewport=1340x800 window=1340x800 imguiDisplay=1340x800
-edit=false policy=0` — all three coordinate spaces agree, so it is not layout, clipping, or
-a degenerate rect. `ProcDrawImGui` now logs a one-shot inventory
-(`[imgui] drawList[i/n] vtx= idx= cmds=`, last entry is the foreground list) to separate
-"ImGui never delivers the foreground list" from "the GPU discards its draws".
+The device log proves the overlay is emitted (`viewport`, `window` and `imguiDisplay` all
+1340x800), so it is not layout, clipping, or a degenerate rect. The structural weakness is
+that **every renderer-modifier callback is emitted into `ImGui::GetBackgroundDrawList()`
+while the touch controls live in `ImGui::GetForegroundDrawList()`**.
+
+Modifiers (gradient, shader modifier, origin, scale, outline, procedural origin, additive)
+are *persistent push constants* consumed when a draw list is replayed, and
+`ProcDrawImGui` only re-uploads a range when its bytes change. The previous Android fix
+published a neutral state at the *end of the background list*, which relies on nothing
+between that list and the foreground list touching the state — an invariant no code
+enforces. Two concrete ways it breaks: a stale transparent gradient multiplies every pixel
+by zero, and a stale `Scale` of 0 collapses every vertex via
+`Origin + (position - Origin) * Scale`. Both leave CPU-side hit testing perfectly correct
+while all primitives disappear — the reported "controls are hidden but work".
+
+**Fix:** `AddImGuiCallbackTo(ImDrawList*, ImGuiCallback)` emits a callback into an arbitrary
+list, and `PushNeutralImGuiState(ImDrawList*)` publishes the complete neutral set.
+`TouchControls::Draw()` calls it on the foreground list *before* any of its own geometry, so
+the guarantee is local to the list instead of inherited across lists. The pre-`ImGui::Render`
+reset now uses the same helper (no longer Android-gated; the invariant holds on every
+backend).
+
+Verified by compiling the real `imgui_common.cpp` and the real `PushNeutralImGuiState` body
+against stubbed ImGui types: 7 callbacks emitted in order, gradient zeroed (all 32 bytes,
+`boundsMin == boundsMax` so the shader's `any(BoundsMin != BoundsMax)` test skips the
+multiply), `scale == (1,1)`, modifier NONE, outline 0, procedural origin 0, additive off;
+`AddImGuiCallback` still targets the background list; slots still reuse across frames;
+`AddImGuiCallbackTo(nullptr)` returns null.
+
+`ProcDrawImGui` also logs a one-shot draw-list inventory
+(`[imgui] drawList[i/n] vtx= idx= cmds=`, last entry being the foreground list). If the
+controls are *still* invisible after this fix, that line tells us whether the foreground
+list reaches the renderer at all.
+
+### Preprocessor hazard
+
+`DrawImGui()` has two adjacent `#ifdef __ANDROID__` blocks around `TouchControls::Draw()`
+and the modifier reset. Removing the reset's `#endif` while editing silently swallows the
+rest of the function on non-Android builds. Check `#if`/`#endif` depth after editing here.
 
 ## Method note
 

@@ -81,6 +81,16 @@ void SetProceduralOrigin(ImVec2 proceduralOrigin);
 void ResetProceduralOrigin();
 void SetAdditive(bool enabled);
 void ResetAdditive();
+
+// Emits a complete neutral modifier state (gradient, shader modifier, origin,
+// scale, outline, procedural origin, additive) directly into the given draw
+// list. Modifiers are persistent push constants consumed when the draw list is
+// replayed, so anything drawn after other UI - notably the touch controls in
+// ImGui's foreground list - inherits the last modifier unless the state is
+// re-published in its own list. A stale transparent gradient or a zeroed scale
+// makes primitives vanish while their CPU-side hit boxes keep working, which is
+// exactly the "controls respond to taps but are never visible" symptom.
+void PushNeutralImGuiState(ImDrawList* drawList);
 void AddImageFlipped(ImTextureID texture, const ImVec2& min, const ImVec2& max, const ImVec2& uvMin = { 0, 0 }, const ImVec2& uvMax = { 0, 0 }, ImU32 col = IM_COL32_WHITE, bool flipHorz = false, bool flipVert = false);
 float Scale(float size, bool useGameplayScale = false);
 double ComputeLoopMotion(double time, double offset, double total);
